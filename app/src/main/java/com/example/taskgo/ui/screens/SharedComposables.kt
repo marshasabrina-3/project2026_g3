@@ -95,6 +95,7 @@ fun TaskDetailScreen(
     val utmMaroon = Color(0xFF800000)
 
     var interestedRunners by remember { mutableStateOf<List<User>>(emptyList()) }
+    var showConfirmCompleteDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(task.interestedRunnerIds) {
         if (isRequester) {
@@ -139,23 +140,45 @@ fun TaskDetailScreen(
                             }
                             
                             val hasApplied = task.interestedRunnerIds.contains(currentUser?.id)
+                            val isAssignedRunner = currentUser?.id == task.runnerId
 
-                            Button(
-                                onClick = onAccept,
-                                enabled = task.status == TaskStatus.OPEN && !hasApplied,
-                                modifier = Modifier.weight(0.5f).height(56.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (hasApplied) Color.Gray else Color(0xFF4CAF50),
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Text(
-                                    text = if (hasApplied) "Applied" else if (task.type == com.example.taskgo.data.model.TaskType.SERVICE) "Request Service" else "Accept Request",
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 14.sp,
-                                    textAlign = TextAlign.Center
-                                )
+                            if (task.status == TaskStatus.ASSIGNED && isAssignedRunner) {
+                                Button(
+                                    onClick = { taskViewModel.updateTask(task.copy(status = TaskStatus.WAITING_VERIFICATION)) },
+                                    modifier = Modifier.weight(0.5f).height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text("Mark as Complete", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                }
+                            } else if (task.status == TaskStatus.WAITING_VERIFICATION && isAssignedRunner) {
+                                Button(
+                                    onClick = { },
+                                    enabled = false,
+                                    modifier = Modifier.weight(0.5f).height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text("Pending Verification", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                }
+                            } else {
+                                Button(
+                                    onClick = onAccept,
+                                    enabled = task.status == TaskStatus.OPEN && !hasApplied,
+                                    modifier = Modifier.weight(0.5f).height(56.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (hasApplied) Color.Gray else Color(0xFF4CAF50),
+                                        contentColor = Color.White
+                                    ),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(
+                                        text = if (hasApplied) "Applied" else if (task.type == com.example.taskgo.data.model.TaskType.SERVICE) "Request Service" else "Accept Request",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
                             }
                         }
                     }
@@ -342,6 +365,7 @@ fun TaskDetailScreen(
                     }
 
                     if (isRequester && task.status == TaskStatus.OPEN) {
+                        // ... existing interested runners logic ...
                         Spacer(modifier = Modifier.height(32.dp))
                         Text("Interested Runners (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                         Spacer(modifier = Modifier.height(12.dp))
@@ -387,7 +411,27 @@ fun TaskDetailScreen(
                                 }
                             }
                         }
-                    } else if (task.status == TaskStatus.ASSIGNED || task.status == TaskStatus.COMPLETED) {
+                    } else if (isRequester && task.status == TaskStatus.WAITING_VERIFICATION) {
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("Verification Required", fontWeight = FontWeight.Bold, color = Color(0xFFF57F17))
+                                Text("The runner has marked this task as complete. Please verify that you have received the service/payment before confirming.", style = MaterialTheme.typography.bodyMedium)
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Button(
+                                    onClick = { showConfirmCompleteDialog = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
+                                ) {
+                                    Text("Confirm Completion")
+                                }
+                            }
+                        }
+                    } else if (task.status == TaskStatus.ASSIGNED || task.status == TaskStatus.COMPLETED || task.status == TaskStatus.WAITING_VERIFICATION) {
                          Spacer(modifier = Modifier.height(32.dp))
                          Text("Assigned Runner", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                          Spacer(modifier = Modifier.height(8.dp))
@@ -398,6 +442,27 @@ fun TaskDetailScreen(
                 }
             }
         }
+    }
+
+    if (showConfirmCompleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmCompleteDialog = false },
+            title = { Text("Confirm Completion") },
+            text = { Text("Are you sure you want to mark this task as complete? Please ensure you have received the payment or service first.") },
+            confirmButton = {
+                Button(onClick = { 
+                    taskViewModel.updateTask(task.copy(status = TaskStatus.COMPLETED))
+                    showConfirmCompleteDialog = false
+                }) {
+                    Text("Yes, Complete")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmCompleteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

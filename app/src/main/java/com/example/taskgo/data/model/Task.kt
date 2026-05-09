@@ -2,8 +2,9 @@ package com.example.taskgo.data.model
 
 enum class TaskStatus {
     OPEN,            // Waiting for runner to accept
-    PENDING_APPROVAL, // Runner accepted, waiting for requester to approve
-    ASSIGNED,        // Requester approved runner (On going)
+    PENDING_APPROVAL, // Runner applied, waiting for requester to approve the runner
+    ASSIGNED,        // Task in progress
+    WAITING_VERIFICATION, // Runner finished, waiting for requester to verify payment/service
     COMPLETED,
     CANCELLED
 }

@@ -498,6 +498,7 @@ fun PostedTaskItem(task: Task) {
         TaskStatus.OPEN -> "Open"
         TaskStatus.PENDING_APPROVAL -> "Pending Approval"
         TaskStatus.ASSIGNED -> "Ongoing"
+        TaskStatus.WAITING_VERIFICATION -> "Pending Verification"
         TaskStatus.COMPLETED -> "Completed"
         TaskStatus.CANCELLED -> "Cancelled"
     }
@@ -506,6 +507,7 @@ fun PostedTaskItem(task: Task) {
         TaskStatus.OPEN -> Color(0xFF4CAF50)
         TaskStatus.ASSIGNED -> Color(0xFF2196F3)
         TaskStatus.PENDING_APPROVAL -> Color(0xFFFF9800)
+        TaskStatus.WAITING_VERIFICATION -> Color(0xFF9C27B0)
         else -> Color.Gray
     }
 
