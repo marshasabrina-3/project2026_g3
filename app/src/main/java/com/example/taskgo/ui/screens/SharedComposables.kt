@@ -2,7 +2,10 @@ package com.example.taskgo.ui.screens
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,20 +19,59 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.TextUnit
+import coil.compose.AsyncImage
 import com.example.taskgo.data.model.Task
 import com.example.taskgo.data.model.TaskStatus
 import com.example.taskgo.data.model.User
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
+import com.example.taskgo.util.ImageUtils
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
-import coil.compose.AsyncImage
+
+@Composable
+fun NameWithRating(name: String, rating: Double, modifier: Modifier = Modifier, fontSize: TextUnit = 14.sp, color: Color = Color.Black, fontWeight: FontWeight = FontWeight.Bold) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
+        Text(
+            text = name,
+            fontSize = fontSize,
+            fontWeight = fontWeight,
+            color = color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Surface(
+            color = Color.LightGray.copy(alpha = 0.2f),
+            shape = CircleShape
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Icon(Icons.Default.Star, null, modifier = Modifier.size(10.dp), tint = Color.Gray)
+                Text(
+                    text = " %.1f".format(Locale.getDefault(), rating),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Gray
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
@@ -39,43 +81,17 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color(0xFF1A1A1A),
-        title = { Text("Edit Task", color = Color.White) },
+        containerColor = Color.White,
+        title = { Text("Edit Task", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
-                OutlinedTextField(
-                    value = desc,
-                    onValueChange = { desc = it },
-                    label = { Text("Description") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
-                OutlinedTextField(
-                    value = amount,
-                    onValueChange = { amount = it },
-                    label = { Text("Amount") },
-                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = Color.White, unfocusedTextColor = Color.White)
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount") }, modifier = Modifier.fillMaxWidth())
             }
         },
-        confirmButton = {
-            Button(onClick = {
-                val amt = amount.toDoubleOrNull() ?: task.paymentAmount
-                onSave(task.copy(title = title, description = desc, paymentAmount = amt))
-            }) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = Color.Gray)
-            }
-        }
+        confirmButton = { Button(onClick = { onSave(task.copy(title = title, description = desc, paymentAmount = amount.toDoubleOrNull() ?: task.paymentAmount)) }) { Text("Save") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
@@ -88,6 +104,7 @@ fun TaskDetailScreen(
     onBack: () -> Unit,
     onAccept: () -> Unit,
     onReport: () -> Unit,
+    onChat: (String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val currentUser by userViewModel.currentUser.collectAsState()
@@ -106,242 +123,156 @@ fun TaskDetailScreen(
     Box(modifier = modifier.fillMaxSize().background(Color.White)) {
         Scaffold(
             bottomBar = {
-                if (!isRequester) {
+                if (!isRequester && task.status == TaskStatus.OPEN) {
                     Surface(
-                        tonalElevation = 12.dp,
-                        shadowElevation = 12.dp,
+                        modifier = Modifier.fillMaxWidth(),
+                        shadowElevation = 16.dp,
                         color = Color.White,
-                        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp)
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            modifier = Modifier.padding(20.dp).padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedButton(
+                            OutlinedIconButton(
                                 onClick = onReport,
-                                modifier = Modifier.weight(0.3f).height(56.dp),
+                                modifier = Modifier.size(54.dp),
                                 shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(1.dp, Color.Red),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red)
+                                border = BorderStroke(1.5.dp, Color(0xFFE57373))
                             ) {
-                                Icon(Icons.Default.Report, contentDescription = null, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Report, contentDescription = "Report", tint = Color(0xFFD32F2F))
                             }
 
                             Button(
-                                onClick = { /* Navigate to Chat */ },
-                                modifier = Modifier.weight(0.3f).height(56.dp),
+                                onClick = {
+                                    if (task.requesterId.isNotEmpty()) onChat(task.requesterId, task.title)
+                                },
+                                modifier = Modifier.height(54.dp).weight(0.4f),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = utmMaroon)
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Chat, null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Chat", fontWeight = FontWeight.Bold)
+                            }
+
+                            val hasApplied = task.interestedRunnerIds.contains(currentUser?.id)
+                            Button(
+                                onClick = onAccept,
+                                enabled = !hasApplied,
+                                modifier = Modifier.height(54.dp).weight(0.6f),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = if (hasApplied) Color.Gray else Color(0xFF43A047))
+                            ) {
+                                Text(if (hasApplied) "Applied" else "Accept", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                } else if (!isRequester && task.runnerId == currentUser?.id) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shadowElevation = 16.dp,
+                        color = Color.White,
+                        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                             Button(
+                                onClick = { 
+                                    if (task.requesterId.isNotEmpty()) onChat(task.requesterId, task.title)
+                                },
+                                modifier = Modifier.height(54.dp).weight(0.4f),
                                 colors = ButtonDefaults.buttonColors(containerColor = utmMaroon),
                                 shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = "Message", tint = Color.White)
-                            }
-                            
-                            val hasApplied = task.interestedRunnerIds.contains(currentUser?.id)
-                            val isAssignedRunner = currentUser?.id == task.runnerId
-
-                            if (task.status == TaskStatus.ASSIGNED && isAssignedRunner) {
-                                Button(
+                             ) {
+                                 Icon(Icons.AutoMirrored.Filled.Chat, null)
+                                 Text(" Chat", fontWeight = FontWeight.Bold)
+                             }
+                             
+                             if (task.status == TaskStatus.ASSIGNED) {
+                                 Button(
                                     onClick = { taskViewModel.updateTask(task.copy(status = TaskStatus.WAITING_VERIFICATION)) },
-                                    modifier = Modifier.weight(0.5f).height(56.dp),
+                                    modifier = Modifier.height(54.dp).weight(0.6f),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
                                     shape = RoundedCornerShape(16.dp)
-                                ) {
-                                    Text("Mark as Complete", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                }
-                            } else if (task.status == TaskStatus.WAITING_VERIFICATION && isAssignedRunner) {
-                                Button(
-                                    onClick = { },
-                                    enabled = false,
-                                    modifier = Modifier.weight(0.5f).height(56.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color.Gray),
-                                    shape = RoundedCornerShape(16.dp)
-                                ) {
-                                    Text("Pending Verification", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-                            } else {
-                                Button(
-                                    onClick = onAccept,
-                                    enabled = task.status == TaskStatus.OPEN && !hasApplied,
-                                    modifier = Modifier.weight(0.5f).height(56.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (hasApplied) Color.Gray else Color(0xFF4CAF50),
-                                        contentColor = Color.White
-                                    ),
-                                    shape = RoundedCornerShape(16.dp)
-                                ) {
-                                    Text(
-                                        text = if (hasApplied) "Applied" else if (task.type == com.example.taskgo.data.model.TaskType.SERVICE) "Request Service" else "Accept Request",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
-                                        textAlign = TextAlign.Center
-                                    )
-                                }
-                            }
+                                 ) {
+                                     Text("Mark Finished", fontWeight = FontWeight.Bold)
+                                 }
+                             } else if (task.status == TaskStatus.WAITING_VERIFICATION) {
+                                 Button(onClick = {}, enabled = false, modifier = Modifier.height(54.dp).weight(0.6f), shape = RoundedCornerShape(16.dp)) {
+                                     Text("Pending Verification", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                 }
+                             }
                         }
                     }
                 }
             }
         ) { padding ->
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .verticalScroll(rememberScrollState())
+                modifier = Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())
             ) {
-                // Top Image Section
                 Box(modifier = Modifier.fillMaxWidth().height(300.dp)) {
                     if (task.images.isNotEmpty()) {
-                         AsyncImage(
-                            model = task.images.first(),
-                            contentDescription = null,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
+                        val pagerState = rememberPagerState(pageCount = { task.images.size })
+                        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { index ->
+                            val imageBytes = remember(task.images[index]) { ImageUtils.decodeBase64ToByteArray(task.images[index]) }
+                            AsyncImage(model = imageBytes, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        }
+                        if (task.images.size > 1) {
+                            Row(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                repeat(task.images.size) { i ->
+                                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (pagerState.currentPage == i) Color.White else Color.White.copy(0.5f)))
+                                }
+                            }
+                        }
                     } else {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(Brush.verticalGradient(listOf(utmMaroon.copy(alpha = 0.1f), utmMaroon.copy(alpha = 0.3f)))),
-                            contentAlignment = Alignment.Center
-                        ) {
-                             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(64.dp),
-                                    tint = utmMaroon.copy(alpha = 0.5f)
-                                )
-                                Text("No Images Provided", color = utmMaroon.copy(alpha = 0.5f))
-                             }
+                        Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(utmMaroon.copy(0.1f), utmMaroon.copy(0.3f)))), contentAlignment = Alignment.Center) {
+                             Icon(Icons.Default.Image, null, modifier = Modifier.size(60.dp), tint = utmMaroon.copy(0.5f))
                         }
                     }
-
-                    // Floating Back Button
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
+                    IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).background(Color.Black.copy(0.3f), CircleShape)) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
                     }
                 }
 
                 Column(modifier = Modifier.padding(24.dp)) {
-                    // Title and Category
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = task.title,
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.Black
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Surface(
-                                    color = utmMaroon.copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = task.category.name.replace("_", " "),
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = utmMaroon,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                Surface(
-                                    color = if (task.type == com.example.taskgo.data.model.TaskType.REQUEST) Color(0xFF2196F3).copy(alpha = 0.1f) else Color(0xFFFF9800).copy(alpha = 0.1f),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = task.type.name,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = if (task.type == com.example.taskgo.data.model.TaskType.REQUEST) Color(0xFF2196F3) else Color(0xFFFF9800),
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = task.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                        Surface(color = if (task.status == TaskStatus.OPEN) Color(0xFFE8F5E9) else Color(0xFFF5F5F5), shape = CircleShape) {
+                            Text(text = task.status.name, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (task.status == TaskStatus.OPEN) Color(0xFF2E7D32) else Color.Gray)
                         }
-                        
-                        // Status Badge
-                        Surface(
-                            color = when(task.status) {
-                                TaskStatus.OPEN -> Color(0xFF4CAF50).copy(alpha = 0.1f)
-                                else -> Color.Gray.copy(alpha = 0.1f)
-                            },
-                            shape = CircleShape
-                        ) {
-                            Text(
-                                text = task.status.name,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = when(task.status) {
-                                    TaskStatus.OPEN -> Color(0xFF4CAF50)
-                                    else -> Color.Gray
-                                }
-                            )
-                        }
+                    }
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                        DetailBadge(text = task.category.name, color = utmMaroon)
+                        DetailBadge(text = task.type.name, color = if (task.type == com.example.taskgo.data.model.TaskType.REQUEST) Color(0xFF2196F3) else Color(0xFFFF9800))
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // Key Info Row (Payment & Deadline)
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        InfoCard(
-                            label = "Payment",
-                            value = if (task.paymentAmount > 0) "RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)}" else "Flexible",
-                            icon = Icons.Default.Payments,
-                            color = utmMaroon,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        InfoCard(
-                            label = "Deadline",
-                            value = task.deadline.ifBlank { "None" },
-                            icon = Icons.Default.Timer,
-                            color = Color(0xFFFF9800),
-                            modifier = Modifier.weight(1f)
-                        )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        DetailInfoCard(label = "Payment", value = "RM %.2f".format(Locale.getDefault(), task.paymentAmount), icon = Icons.Default.Payments, color = utmMaroon, modifier = Modifier.weight(1f))
+                        DetailInfoCard(label = "Deadline", value = task.deadline.ifBlank { "None" }, icon = Icons.Default.Timer, color = Color(0xFFFF9800), modifier = Modifier.weight(1f))
                     }
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    val postDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(task.timestamp))
+                    Text(text = "Posted on: $postDate", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 8.dp))
+                    
+                    task.completionTimestamp?.let {
+                        val compDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(it))
+                        Text(text = "Completed on: $compDate", fontSize = 12.sp, color = Color(0xFF43A047), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                    }
 
-                    Text("Description", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = task.description,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = Color.DarkGray,
-                        lineHeight = 24.sp
-                    )
+                    Text("Description", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 32.dp), color = utmMaroon)
+                    Text(text = task.description, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyLarge, color = Color.DarkGray)
 
-                    Spacer(modifier = Modifier.height(24.dp))
-                    HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
-                    Spacer(modifier = Modifier.height(24.dp))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 32.dp), color = Color.LightGray.copy(0.3f))
 
-                    // Location Section
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = utmMaroon)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Location", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Icon(Icons.Default.LocationOn, null, tint = utmMaroon, modifier = Modifier.size(24.dp))
+                        Text(" Location", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F8F8)),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
+                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)), shape = RoundedCornerShape(16.dp)) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(text = task.campus, fontWeight = FontWeight.Bold, color = utmMaroon)
                             Text(text = task.address, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
@@ -349,96 +280,112 @@ fun TaskDetailScreen(
                     }
 
                     Spacer(modifier = Modifier.height(32.dp))
-                    
-                    // Requester Info
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                         Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = Color.LightGray) {
-                             Box(contentAlignment = Alignment.Center) {
-                                 Icon(Icons.Default.Person, contentDescription = null)
-                             }
-                         }
-                         Spacer(modifier = Modifier.width(12.dp))
-                         Column {
-                             Text(if (isRequester) "Posted by You" else "Requested by", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                             Text(if (isRequester) currentUser?.name ?: "You" else "User ID: ${task.requesterId}", fontWeight = FontWeight.Bold)
-                         }
+
+                    // Requester Info Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                    ) {
+                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = Color.White) {
+                                Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, tint = utmMaroon) }
+                            }
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(if (isRequester) "Posted by You" else "Posted by", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                NameWithRating(
+                                    name = if (isRequester) currentUser?.name ?: "You" else task.requesterName.ifBlank { "User" },
+                                    rating = taskViewModel.getUserRating(task.requesterId),
+                                    fontSize = 15.sp,
+                                    color = Color.Black,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+                        }
                     }
 
                     if (isRequester && task.status == TaskStatus.OPEN) {
-                        // ... existing interested runners logic ...
-                        Spacer(modifier = Modifier.height(32.dp))
+                        Spacer(modifier = Modifier.height(40.dp))
                         Text("Interested Runners (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                        Spacer(modifier = Modifier.height(12.dp))
-                        
                         if (interestedRunners.isEmpty()) {
-                            Text("No applicants yet. Share your task to get help!", color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                            Text("Waiting for applications...", color = Color.Gray, modifier = Modifier.padding(vertical = 16.dp))
                         } else {
                             interestedRunners.forEach { runner ->
                                 Card(
-                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF8F8F8))
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Surface(modifier = Modifier.size(32.dp), shape = CircleShape, color = utmMaroon.copy(alpha = 0.1f)) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Text(runner.name.take(1), color = utmMaroon, fontWeight = FontWeight.Bold)
-                                                }
+                                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                            Surface(modifier = Modifier.size(36.dp), shape = CircleShape, color = Color(0xFFF5F5F5)) {
+                                                Box(contentAlignment = Alignment.Center) { Text(runner.name.take(1), fontWeight = FontWeight.Bold) }
                                             }
                                             Spacer(modifier = Modifier.width(12.dp))
-                                            Column {
-                                                Text(runner.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Default.Star, contentDescription = null, tint = Color(0xFFFFCC00), modifier = Modifier.size(14.dp))
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text("${runner.rating}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                                                }
-                                            }
+                                            NameWithRating(
+                                                name = runner.name,
+                                                rating = taskViewModel.getUserRating(runner.id),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
                                         }
-                                        Button(
-                                            onClick = { taskViewModel.assignRunner(task.id, runner.id) },
-                                            shape = RoundedCornerShape(8.dp),
-                                            colors = ButtonDefaults.buttonColors(containerColor = utmMaroon)
-                                        ) {
-                                            Text("Assign", fontSize = 12.sp)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(onClick = { onChat(runner.id, "Chat with ${runner.name}") }) {
+                                                Icon(Icons.AutoMirrored.Filled.Chat, null, tint = utmMaroon)
+                                            }
+                                            Button(
+                                                onClick = { taskViewModel.assignRunner(task.id, runner.id) },
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
+                                                shape = RoundedCornerShape(10.dp)
+                                            ) {
+                                                Text("Assign", fontSize = 12.sp)
+                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     } else if (isRequester && task.status == TaskStatus.WAITING_VERIFICATION) {
-                        Spacer(modifier = Modifier.height(32.dp))
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text("Verification Required", fontWeight = FontWeight.Bold, color = Color(0xFFF57F17))
-                                Text("The runner has marked this task as complete. Please verify that you have received the service/payment before confirming.", style = MaterialTheme.typography.bodyMedium)
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Button(
-                                    onClick = { showConfirmCompleteDialog = true },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                                ) {
+                        Card(modifier = Modifier.padding(top = 40.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFFFFD54F))) {
+                            Column(modifier = Modifier.padding(20.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Verified, null, tint = Color(0xFFF57F17))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Verification Required", fontWeight = FontWeight.Bold, color = Color(0xFFF57F17))
+                                }
+                                Text("The runner has finished. Please verify payment/service received.", modifier = Modifier.padding(top = 8.dp), fontSize = 13.sp)
+                                Button(onClick = { showConfirmCompleteDialog = true }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)), shape = RoundedCornerShape(12.dp)) {
                                     Text("Confirm Completion")
                                 }
                             }
                         }
-                    } else if (task.status == TaskStatus.ASSIGNED || task.status == TaskStatus.COMPLETED || task.status == TaskStatus.WAITING_VERIFICATION) {
-                         Spacer(modifier = Modifier.height(32.dp))
+                    } else if (task.runnerId != null) {
+                         Spacer(modifier = Modifier.height(40.dp))
                          Text("Assigned Runner", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                         Spacer(modifier = Modifier.height(8.dp))
-                         Text("User ID: ${task.runnerId}", color = Color.DarkGray)
+                         Card(
+                             modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+                             shape = RoundedCornerShape(16.dp),
+                             colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
+                         ) {
+                             Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                 Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = Color.White) {
+                                     Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.AccountCircle, null, tint = Color(0xFF1976D2)) }
+                                 }
+                                 Spacer(modifier = Modifier.width(16.dp))
+                                 Column {
+                                     Text("Completed by", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                     NameWithRating(
+                                         name = task.runnerName ?: "Runner",
+                                         rating = taskViewModel.getUserRating(task.runnerId),
+                                         fontWeight = FontWeight.Bold
+                                     )
+                                     Text("Task is ${task.status.name.lowercase()}", fontSize = 11.sp, color = Color(0xFF1976D2))
+                                 }
+                             }
+                         }
                     }
-                    
-                    Spacer(modifier = Modifier.height(100.dp))
+                    Spacer(modifier = Modifier.height(120.dp))
                 }
             }
         }
@@ -447,38 +394,29 @@ fun TaskDetailScreen(
     if (showConfirmCompleteDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmCompleteDialog = false },
-            title = { Text("Confirm Completion") },
-            text = { Text("Are you sure you want to mark this task as complete? Please ensure you have received the payment or service first.") },
-            confirmButton = {
-                Button(onClick = { 
-                    taskViewModel.updateTask(task.copy(status = TaskStatus.COMPLETED))
-                    showConfirmCompleteDialog = false
-                }) {
-                    Text("Yes, Complete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmCompleteDialog = false }) {
-                    Text("Cancel")
-                }
-            }
+            title = { Text("Confirm Completion", fontWeight = FontWeight.Bold) },
+            text = { Text("Marking this task as complete is permanent.") },
+            confirmButton = { Button(onClick = { taskViewModel.completeTask(task.id); showConfirmCompleteDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))) { Text("Confirm") } },
+            dismissButton = { TextButton(onClick = { showConfirmCompleteDialog = false }) { Text("Cancel") } }
         )
     }
 }
 
 @Composable
-fun InfoCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, modifier: Modifier) {
-    Card(
-        modifier = modifier,
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.05f)),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.1f))
-    ) {
+fun DetailBadge(text: String, color: Color) {
+    Surface(color = color.copy(alpha = 0.1f), shape = RoundedCornerShape(8.dp)) {
+        Text(text = text.replace("_", " "), modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
+@Composable
+fun DetailInfoCard(label: String, value: String, icon: androidx.compose.ui.graphics.vector.ImageVector, color: Color, modifier: Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(20.dp), color = Color(0xFFF9F9F9), border = BorderStroke(1.dp, Color(0xFFEEEEEE))) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.height(8.dp))
+            Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color)
+            Text(value, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = color)
         }
     }
 }

@@ -24,7 +24,9 @@ enum class TaskType {
 data class Task(
     val id: String = "",
     val requesterId: String = "",
-    val runnerId: String? = null, // The final accepted runner
+    val requesterName: String = "", // Added name for quick display
+    val runnerId: String? = null,
+    val runnerName: String? = null, // Added runner name
     val interestedRunnerIds: List<String> = emptyList(), // Runners who want to do this task
     val title: String = "",
     val description: String = "",
@@ -38,5 +40,6 @@ data class Task(
     val status: TaskStatus = TaskStatus.OPEN,
     val paymentStatus: PaymentStatus = PaymentStatus.PENDING,
     val images: List<String> = emptyList(),
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val completionTimestamp: Long? = null
 )

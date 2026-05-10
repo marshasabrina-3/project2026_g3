@@ -104,7 +104,8 @@ fun AdminHomeScreen(
                     address = "Admin HQ",
                     deadline = "None",
                     paymentAmount = amount.toDoubleOrNull() ?: 0.0,
-                    requesterId = "Admin"
+                    requesterId = "Admin",
+                    requesterName = "TaskGO Admin"
                 )
                 showCreateDialog = false
             }

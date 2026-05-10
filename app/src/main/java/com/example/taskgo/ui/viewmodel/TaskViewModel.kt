@@ -1,18 +1,22 @@
 package com.example.taskgo.ui.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.net.Uri
+import android.util.Log
+import android.widget.Toast
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.taskgo.data.model.*
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
+import com.example.taskgo.util.ImageUtils
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.toObject
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
-import java.util.UUID
+import kotlinx.coroutines.withTimeout
 
-class TaskViewModel : ViewModel() {
+class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val firestore = FirebaseFirestore.getInstance()
     
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
@@ -36,36 +40,28 @@ class TaskViewModel : ViewModel() {
     private val _priceRange = MutableStateFlow(0.2..100.0)
     val priceRange = _priceRange.asStateFlow()
 
-    enum class SortOption {
-        LATEST, ALPHA_ASC, ALPHA_DESC, PRICE_LOW_HIGH, PRICE_HIGH_LOW
-    }
+    private val _isPosting = MutableStateFlow(false)
+    val isPosting = _isPosting.asStateFlow()
+
+    enum class SortOption { LATEST, ALPHA_ASC, ALPHA_DESC, PRICE_LOW_HIGH, PRICE_HIGH_LOW }
     private val _sortOption = MutableStateFlow(SortOption.LATEST)
     val sortOption = _sortOption.asStateFlow()
 
-    val filteredTasks = combine(
-        _tasks, _searchQuery, _selectedCategory, _selectedBlock, _priceRange, _sortOption
-    ) { array ->
+    val filteredTasks = combine(_tasks, _searchQuery, _selectedCategory, _selectedBlock, _priceRange, _sortOption) { array ->
         val tasks = array[0] as List<Task>
         val query = array[1] as String
         val category = array[2] as TaskCategory?
         val block = array[3] as String?
-        @Suppress("UNCHECKED_CAST")
         val price = array[4] as ClosedFloatingPointRange<Double>
         val sort = array[5] as SortOption
 
         tasks.filter { task ->
-            val isOpen = task.status == TaskStatus.OPEN
+            val isLive = task.status == TaskStatus.OPEN
             val matchesCategory = category == null || task.category == category
-            val matchesQuery = task.title.contains(query, ignoreCase = true) || 
-                               task.description.contains(query, ignoreCase = true)
+            val matchesQuery = task.title.contains(query, ignoreCase = true) || task.description.contains(query, ignoreCase = true)
             val matchesBlock = block == null || task.location.contains("Block $block", ignoreCase = true)
-            val matchesPrice = if (price.endInclusive >= 100.0) {
-                task.paymentAmount >= price.start
-            } else {
-                task.paymentAmount in price
-            }
-            
-            isOpen && matchesCategory && matchesQuery && matchesBlock && matchesPrice
+            val matchesPrice = if (price.endInclusive >= 100.0) task.paymentAmount >= price.start else task.paymentAmount in price
+            isLive && matchesCategory && matchesQuery && matchesBlock && matchesPrice
         }.let { filtered ->
             when (sort) {
                 SortOption.LATEST -> filtered.sortedByDescending { it.timestamp }
@@ -84,125 +80,131 @@ class TaskViewModel : ViewModel() {
     }
 
     private fun fetchTasks() {
-        firestore.collection("Tasks")
-            .orderBy("timestamp", Query.Direction.DESCENDING)
-            .addSnapshotListener { snapshot, _ ->
-                if (snapshot != null) {
-                    _tasks.value = snapshot.documents.mapNotNull { it.toObject<Task>() }
-                }
-            }
-    }
-
-    private fun fetchReports() {
-        firestore.collection("Reports")
-            .addSnapshotListener { snapshot, _ ->
-                if (snapshot != null) {
-                    _reports.value = snapshot.documents.mapNotNull { it.toObject<Report>() }
-                }
-            }
-    }
-
-    private fun fetchReviews() {
-        firestore.collection("Reviews")
-            .addSnapshotListener { snapshot, _ ->
-                if (snapshot != null) {
-                    _reviews.value = snapshot.documents.mapNotNull { it.toObject<Review>() }
-                }
-            }
-    }
-
-    fun onSearchQueryChange(query: String) {
-        _searchQuery.value = query
-    }
-
-    fun onCategoryChange(category: TaskCategory?) {
-        _selectedCategory.value = category
-    }
-
-    fun onBlockChange(block: String?) {
-        _selectedBlock.value = block
-    }
-
-    fun onPriceRangeChange(range: ClosedFloatingPointRange<Double>) {
-        _priceRange.value = range
-    }
-
-    fun onSortOptionChange(option: SortOption) {
-        _sortOption.value = option
-    }
-
-    fun addTask(
-        title: String,
-        description: String,
-        category: TaskCategory,
-        type: TaskType,
-        campus: String,
-        address: String,
-        deadline: String,
-        paymentAmount: Double,
-        requesterId: String
-    ) {
-        val docRef = firestore.collection("Tasks").document()
-        val newTask = Task(
-            id = docRef.id,
-            requesterId = requesterId,
-            title = title,
-            description = description,
-            category = category,
-            type = type,
-            campus = campus,
-            address = address,
-            deadline = deadline,
-            paymentAmount = paymentAmount,
-            status = TaskStatus.OPEN,
-            timestamp = System.currentTimeMillis()
-        )
-        docRef.set(newTask)
-    }
-
-    fun deleteTask(taskId: String) {
-        firestore.collection("Tasks").document(taskId).delete()
-    }
-
-    fun updateTask(updatedTask: Task) {
-        firestore.collection("Tasks").document(updatedTask.id).set(updatedTask)
-    }
-
-    suspend fun getInterestedRunners(runnerIds: List<String>): List<User> {
-        if (runnerIds.isEmpty()) return emptyList()
-        return try {
-            val snapshot = firestore.collection("Users")
-                .whereIn("id", runnerIds)
-                .get()
-                .await()
-            snapshot.documents.mapNotNull { it.toObject<User>() }
-        } catch (e: Exception) {
-            emptyList()
+        firestore.collection("Tasks").orderBy("timestamp", Query.Direction.DESCENDING).addSnapshotListener { snapshot, _ ->
+            if (snapshot != null) _tasks.value = snapshot.documents.mapNotNull { it.toObject<Task>() }
         }
     }
 
+    private fun fetchReports() {
+        firestore.collection("Reports").addSnapshotListener { snapshot, _ ->
+            if (snapshot != null) _reports.value = snapshot.documents.mapNotNull { it.toObject<Report>() }
+        }
+    }
+
+    private fun fetchReviews() {
+        firestore.collection("Reviews").addSnapshotListener { snapshot, _ ->
+            if (snapshot != null) _reviews.value = snapshot.documents.mapNotNull { it.toObject<Review>() }
+        }
+    }
+
+    fun onSearchQueryChange(q: String) { _searchQuery.value = q }
+    fun onCategoryChange(c: TaskCategory?) { _selectedCategory.value = c }
+    fun onBlockChange(b: String?) { _selectedBlock.value = b }
+    fun onPriceRangeChange(r: ClosedFloatingPointRange<Double>) { _priceRange.value = r }
+    fun onSortOptionChange(s: SortOption) { _sortOption.value = s }
+
+    fun addTask(
+        title: String, description: String, category: TaskCategory, type: TaskType,
+        campus: String, address: String, deadline: String, paymentAmount: Double,
+        requesterId: String, requesterName: String, imageUris: List<Uri> = emptyList()
+    ) {
+        viewModelScope.launch {
+            _isPosting.value = true
+            try {
+                // Convert images to Base64 locally (max width 500 to keep doc size safe)
+                val base64Images = imageUris.mapNotNull { uri ->
+                    ImageUtils.uriToBase64(getApplication(), uri, 500, 500)
+                }
+
+                val docRef = firestore.collection("Tasks").document()
+                val newTask = Task(
+                    id = docRef.id,
+                    requesterId = requesterId,
+                    requesterName = requesterName,
+                    title = title,
+                    description = description,
+                    category = category,
+                    type = type,
+                    campus = campus,
+                    address = address,
+                    deadline = deadline,
+                    paymentAmount = paymentAmount,
+                    status = TaskStatus.OPEN,
+                    images = base64Images,
+                    timestamp = System.currentTimeMillis()
+                )
+                
+                withTimeout(15000) {
+                    docRef.set(newTask).await()
+                }
+                Toast.makeText(getApplication(), "Task posted successfully!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "AddTask Error", e)
+                Toast.makeText(getApplication(), "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            } finally {
+                _isPosting.value = false
+            }
+        }
+    }
+
+    fun deleteTask(taskId: String) { firestore.collection("Tasks").document(taskId).delete() }
+    fun updateTask(t: Task) { firestore.collection("Tasks").document(t.id).set(t) }
+    
+    suspend fun getInterestedRunners(ids: List<String>): List<User> {
+        if (ids.isEmpty()) return emptyList()
+        return try {
+            val snapshot = firestore.collection("Users").whereIn("id", ids).get().await()
+            snapshot.documents.mapNotNull { it.toObject<User>() }
+        } catch (e: Exception) { emptyList() }
+    }
+
     fun assignRunner(taskId: String, runnerId: String) {
-        firestore.collection("Tasks").document(taskId).update(
-            "runnerId", runnerId,
-            "status", TaskStatus.ASSIGNED
-        )
+        viewModelScope.launch {
+            try {
+                val userDoc = firestore.collection("Users").document(runnerId).get().await()
+                val runnerName = userDoc.getString("name") ?: "Runner"
+                
+                firestore.collection("Tasks").document(taskId).update(
+                    "runnerId", runnerId,
+                    "runnerName", runnerName,
+                    "status", TaskStatus.ASSIGNED
+                ).await()
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "AssignRunner Error", e)
+            }
+        }
     }
 
     fun applyForTask(taskId: String, runnerId: String) {
+        firestore.collection("Tasks").document(taskId).update("interestedRunnerIds", com.google.firebase.firestore.FieldValue.arrayUnion(runnerId))
+    }
+
+    fun addReview(review: Review) {
+        val docRef = firestore.collection("Reviews").document()
+        val finalReview = review.copy(id = docRef.id)
+        docRef.set(finalReview)
+    }
+
+    fun addReport(report: Report) {
+        val docRef = firestore.collection("Reports").document()
+        val finalReport = report.copy(id = docRef.id)
+        docRef.set(finalReport)
+    }
+
+    fun completeTask(taskId: String) {
         firestore.collection("Tasks").document(taskId).update(
-            "interestedRunnerIds", com.google.firebase.firestore.FieldValue.arrayUnion(runnerId)
+            "status", TaskStatus.COMPLETED,
+            "completionTimestamp", System.currentTimeMillis()
         )
     }
 
-    fun reportTask(taskId: String, reporterId: String, reason: String) {
-        val docRef = firestore.collection("Reports").document()
-        val newReport = Report(
-            id = docRef.id,
-            taskId = taskId,
-            reporterId = reporterId,
-            description = reason,
-            status = ReportStatus.PENDING
-        )
-        docRef.set(newReport)
+    fun getUserRating(userId: String): Double {
+        val userReviews = _reviews.value.filter { it.revieweeId == userId }
+        if (userReviews.isEmpty()) return 0.0
+        return userReviews.map { it.rating }.average()
+    }
+
+    fun getUserReportCount(userId: String): Int {
+        return _reports.value.count { it.reportedUserId == userId }
     }
 }
