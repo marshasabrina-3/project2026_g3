@@ -233,6 +233,30 @@ fun TaskDetailScreen(
                     IconButton(onClick = onBack, modifier = Modifier.padding(16.dp).background(Color.Black.copy(0.3f), CircleShape)) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White)
                     }
+
+                    // Requester Menu (Three Dots)
+                    if (isRequester && task.status != TaskStatus.COMPLETED && task.status != TaskStatus.CANCELLED) {
+                        var showMenu by remember { mutableStateOf(false) }
+                        Box(modifier = Modifier.align(Alignment.TopEnd).padding(16.dp)) {
+                            IconButton(
+                                onClick = { showMenu = true },
+                                modifier = Modifier.background(Color.Black.copy(0.3f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.MoreVert, null, tint = Color.White)
+                            }
+                            DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Cancel Task", color = Color.Red) },
+                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
+                                    onClick = {
+                                        showMenu = false
+                                        taskViewModel.cancelTask(task.id)
+                                        onBack()
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
 
                 Column(modifier = Modifier.padding(24.dp)) {
