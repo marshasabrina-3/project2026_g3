@@ -18,7 +18,7 @@ import kotlinx.coroutines.withTimeout
 
 class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val firestore = FirebaseFirestore.getInstance()
-    
+
     private val _tasks = MutableStateFlow<List<Task>>(emptyList())
     val allTasks: StateFlow<List<Task>> = _tasks.asStateFlow()
 
@@ -103,6 +103,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun onPriceRangeChange(r: ClosedFloatingPointRange<Double>) { _priceRange.value = r }
     fun onSortOptionChange(s: SortOption) { _sortOption.value = s }
 
+    // --- TASK ACTIONS WITH NOTIFICATION LOGS ---
+
     fun addTask(
         title: String, description: String, category: TaskCategory, type: TaskType,
         campus: String, address: String, deadline: String, paymentAmount: Double,
@@ -111,7 +113,6 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _isPosting.value = true
             try {
-                // Convert images to Base64 locally (max width 500 to keep doc size safe)
                 val base64Images = imageUris.mapNotNull { uri ->
                     ImageUtils.uriToBase64(getApplication(), uri, 500, 500)
                 }
@@ -133,7 +134,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                     images = base64Images,
                     timestamp = System.currentTimeMillis()
                 )
-                
+
                 withTimeout(15000) {
                     docRef.set(newTask).await()
                 }
@@ -147,28 +148,20 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun deleteTask(taskId: String) { firestore.collection("Tasks").document(taskId).delete() }
-    fun updateTask(t: Task) { firestore.collection("Tasks").document(t.id).set(t) }
-    
-    suspend fun getInterestedRunners(ids: List<String>): List<User> {
-        if (ids.isEmpty()) return emptyList()
-        return try {
-            val snapshot = firestore.collection("Users").whereIn("id", ids).get().await()
-            snapshot.documents.mapNotNull { it.toObject<User>() }
-        } catch (e: Exception) { emptyList() }
-    }
-
     fun assignRunner(taskId: String, runnerId: String) {
         viewModelScope.launch {
             try {
                 val userDoc = firestore.collection("Users").document(runnerId).get().await()
                 val runnerName = userDoc.getString("name") ?: "Runner"
-                
+
                 firestore.collection("Tasks").document(taskId).update(
                     "runnerId", runnerId,
                     "runnerName", runnerName,
                     "status", TaskStatus.ASSIGNED
                 ).await()
+
+                // Notify Runner
+                sendNotificationToUser(runnerId, "Task Assigned!", "You have been picked for a task.")
             } catch (e: Exception) {
                 Log.e("TaskViewModel", "AssignRunner Error", e)
             }
@@ -176,19 +169,20 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun applyForTask(taskId: String, runnerId: String) {
-        firestore.collection("Tasks").document(taskId).update("interestedRunnerIds", com.google.firebase.firestore.FieldValue.arrayUnion(runnerId))
-    }
+        viewModelScope.launch {
+            try {
+                firestore.collection("Tasks").document(taskId).update(
+                    "interestedRunnerIds", com.google.firebase.firestore.FieldValue.arrayUnion(runnerId)
+                ).await()
 
-    fun addReview(review: Review) {
-        val docRef = firestore.collection("Reviews").document()
-        val finalReview = review.copy(id = docRef.id)
-        docRef.set(finalReview)
-    }
-
-    fun addReport(report: Report) {
-        val docRef = firestore.collection("Reports").document()
-        val finalReport = report.copy(id = docRef.id)
-        docRef.set(finalReport)
+                // Notify Requester
+                val taskDoc = firestore.collection("Tasks").document(taskId).get().await()
+                val requesterId = taskDoc.getString("requesterId") ?: ""
+                sendNotificationToUser(requesterId, "New Applicant!", "Someone wants to help with your task.")
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "Apply Error", e)
+            }
+        }
     }
 
     fun completeTask(taskId: String) {
@@ -208,6 +202,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // --- ORIGINAL HELPER FUNCTIONS (RATING/REPORTS) ---
+
     fun getUserRating(userId: String): Double {
         val userReviews = _reviews.value.filter { it.revieweeId == userId }
         if (userReviews.isEmpty()) return 0.0
@@ -216,5 +212,51 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getUserReportCount(userId: String): Int {
         return _reports.value.count { it.reportedUserId == userId }
+    }
+
+    fun addReview(review: Review) {
+        val docRef = firestore.collection("Reviews").document()
+        docRef.set(review.copy(id = docRef.id))
+    }
+
+    fun addReport(report: Report) {
+        val docRef = firestore.collection("Reports").document()
+        docRef.set(report.copy(id = docRef.id))
+    }
+
+    fun deleteTask(taskId: String) { firestore.collection("Tasks").document(taskId).delete() }
+    fun updateTask(t: Task) { firestore.collection("Tasks").document(t.id).set(t) }
+
+    suspend fun getInterestedRunners(ids: List<String>): List<User> {
+        if (ids.isEmpty()) return emptyList()
+        return try {
+            val snapshot = firestore.collection("Users").whereIn("id", ids).get().await()
+            snapshot.documents.mapNotNull { it.toObject<User>() }
+        } catch (e: Exception) { emptyList() }
+    }
+
+    // --- FCM HELPER ---
+
+    private fun sendNotificationToUser(userId: String, title: String, message: String) {
+        // 1. Log for debugging
+        Log.d("FCM_LOG", "Sending to $userId: $title")
+
+        // 2. SAVE TO DATABASE (This makes it show up in your screenshot)
+        val notificationData = hashMapOf(
+            "receiverId" to userId,
+            "title" to title,
+            "message" to message,
+            "timestamp" to System.currentTimeMillis(),
+            "isRead" to false
+        )
+
+        firestore.collection("Notifications")
+            .add(notificationData)
+            .addOnSuccessListener {
+                Log.d("DATABASE", "Notification saved to Firestore!")
+            }
+            .addOnFailureListener { e ->
+                Log.e("DATABASE", "Failed to save notification", e)
+            }
     }
 }
