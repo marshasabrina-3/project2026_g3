@@ -190,16 +190,16 @@ fun PostMainScreen(
                 ExpandableListSection("Requested Tasks", myRequests.size, requestsExpanded, { requestsExpanded = !requestsExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (myRequests.isEmpty()) EmptyHistoryItem("No live requests.")
-                        else myRequests.forEach { CompactHistoryItem(it, { onTaskClick(it) }) }
+                        else myRequests.forEach { CompactHistoryItem(it, { onTaskClick(it) }, onCancel = { taskViewModel.cancelTask(it.id) }) }
                     }
                 }
             }
             item {
-                val myServices = allTasks.filter { it.requesterId == user?.id && it.type == TaskType.SERVICE && it.status != TaskStatus.COMPLETED }
+                val myServices = allTasks.filter { it.requesterId == user?.id && it.type == TaskType.SERVICE && it.status != TaskStatus.COMPLETED && it.status != TaskStatus.CANCELLED }
                 ExpandableListSection("Service Offers", myServices.size, servicesExpanded, { servicesExpanded = !servicesExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (myServices.isEmpty()) EmptyHistoryItem("No live services.")
-                        else myServices.forEach { CompactHistoryItem(it, { onTaskClick(it) }) }
+                        else myServices.forEach { CompactHistoryItem(it, { onTaskClick(it) }, onCancel = { taskViewModel.cancelTask(it.id) }) }
                     }
                 }
             }
@@ -209,27 +209,39 @@ fun PostMainScreen(
             // Applications Sent
             item { SectionLabel("Applications Sent") }
             item {
-                val appliedRequests = allTasks.filter { (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) && it.type == TaskType.REQUEST }
+                val appliedRequests = allTasks.filter { (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) && it.type == TaskType.REQUEST && it.status != TaskStatus.CANCELLED }
                 ExpandableListSection("Applications (Requests)", appliedRequests.size, applicationsRequestExpanded, { applicationsRequestExpanded = !applicationsRequestExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (appliedRequests.isEmpty()) EmptyHistoryItem("No applications sent for requests.")
                         else appliedRequests.forEach { task ->
                             val isChosen = task.runnerId == user?.id
                             val isRejected = task.runnerId != null && task.runnerId != user?.id
-                            CompactHistoryItem(task, { onTaskClick(task) }, if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING")
+                            val isPending = !isChosen && !isRejected
+                            CompactHistoryItem(
+                                task, 
+                                { onTaskClick(task) }, 
+                                if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING",
+                                onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null
+                            )
                         }
                     }
                 }
             }
             item {
-                val appliedServices = allTasks.filter { (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) && it.type == TaskType.SERVICE }
+                val appliedServices = allTasks.filter { (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) && it.type == TaskType.SERVICE && it.status != TaskStatus.CANCELLED }
                 ExpandableListSection("Applications (Services)", appliedServices.size, applicationsServiceExpanded, { applicationsServiceExpanded = !applicationsServiceExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (appliedServices.isEmpty()) EmptyHistoryItem("No applications sent for services.")
                         else appliedServices.forEach { task ->
                             val isChosen = task.runnerId == user?.id
                             val isRejected = task.runnerId != null && task.runnerId != user?.id
-                            CompactHistoryItem(task, { onTaskClick(task) }, if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING")
+                            val isPending = !isChosen && !isRejected
+                            CompactHistoryItem(
+                                task, 
+                                { onTaskClick(task) }, 
+                                if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING",
+                                onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null
+                            )
                         }
                     }
                 }
@@ -283,7 +295,7 @@ fun ExpandableListSection(title: String, count: Int, isExpanded: Boolean, onTogg
 }
 
 @Composable
-fun CompactHistoryItem(task: Task, onClick: () -> Unit, customStatus: String? = null) {
+fun CompactHistoryItem(task: Task, onClick: () -> Unit, customStatus: String? = null, onCancel: (() -> Unit)? = null) {
     val statusColor = when (customStatus ?: task.status.name) {
         "ACCEPTED", "COMPLETED" -> Color(0xFF2E7D32)
         "REJECTED", "CANCELLED" -> Color(0xFFD32F2F)
@@ -306,7 +318,14 @@ fun CompactHistoryItem(task: Task, onClick: () -> Unit, customStatus: String? = 
                 Text(task.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(text = customStatus ?: task.status.name.lowercase().replaceFirstChar { it.uppercase() }, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
-            Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), fontWeight = FontWeight.Black, color = Color(0xFF800000), fontSize = 14.sp)
+            
+            if (onCancel != null) {
+                IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Cancel, null, tint = Color.Red, modifier = Modifier.size(20.dp))
+                }
+            } else {
+                Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), fontWeight = FontWeight.Black, color = Color(0xFF800000), fontSize = 14.sp)
+            }
         }
     }
 }

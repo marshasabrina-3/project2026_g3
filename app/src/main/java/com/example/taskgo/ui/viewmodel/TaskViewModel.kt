@@ -198,6 +198,16 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun cancelTask(taskId: String) {
+        firestore.collection("Tasks").document(taskId).update("status", TaskStatus.CANCELLED)
+    }
+
+    fun withdrawApplication(taskId: String, runnerId: String) {
+        firestore.collection("Tasks").document(taskId).update(
+            "interestedRunnerIds", com.google.firebase.firestore.FieldValue.arrayRemove(runnerId)
+        )
+    }
+
     fun getUserRating(userId: String): Double {
         val userReviews = _reviews.value.filter { it.revieweeId == userId }
         if (userReviews.isEmpty()) return 0.0
