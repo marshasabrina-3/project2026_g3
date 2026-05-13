@@ -10,7 +10,7 @@ enum class TaskStatus {
 }
 
 enum class PaymentStatus {
-    PENDING, PAID
+    PENDING, PAID, DISPUTED
 }
 
 enum class TaskCategory {
@@ -40,6 +40,8 @@ data class Task(
     val status: TaskStatus = TaskStatus.OPEN,
     val paymentStatus: PaymentStatus = PaymentStatus.PENDING,
     val images: List<String> = emptyList(),
+    val completionProof: String? = null, // Base64 encoded image
+    val paymentProof: String? = null, // Base64 encoded image or message ID?
     val timestamp: Long = System.currentTimeMillis(),
     val completionTimestamp: Long? = null
 )

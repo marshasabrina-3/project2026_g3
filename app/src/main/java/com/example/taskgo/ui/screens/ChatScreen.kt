@@ -73,6 +73,22 @@ fun ChatScreen(
         }
     }
 
+    val paymentProofLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { 
+            chatViewModel.uploadImage(
+                uri = it,
+                senderId = currentUser?.id ?: "",
+                senderName = currentUser?.name ?: "User",
+                receiverId = otherUserId,
+                receiverName = if (isSenderRequester) (currentSummary?.runnerName ?: "Runner") else (currentSummary?.requesterName ?: "Requester"),
+                taskId = taskId,
+                taskTitle = taskTitle,
+                isRequester = isSenderRequester,
+                isPaymentProof = true
+            ) 
+        }
+    }
+
     LaunchedEffect(otherUserId, taskId, currentUser?.id) {
         currentUser?.id?.let { uid ->
             val runnerId = if (isSenderRequester) otherUserId else uid
@@ -139,7 +155,8 @@ fun ChatScreen(
                         text = message.text,
                         imageUrl = message.imageUrl,
                         timestamp = message.timestamp,
-                        isMe = isMe
+                        isMe = isMe,
+                        isPaymentProof = message.isPaymentProof
                     )
                 }
                 item { Spacer(modifier = Modifier.height(8.dp)) }
@@ -152,6 +169,11 @@ fun ChatScreen(
                         .fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (isSenderRequester) {
+                        IconButton(onClick = { paymentProofLauncher.launch("image/*") }) {
+                            Icon(Icons.Default.Payments, contentDescription = "Send Payment Proof", tint = Color(0xFF43A047))
+                        }
+                    }
                     IconButton(onClick = { imageLauncher.launch("image/*") }) {
                         Icon(Icons.Default.Image, contentDescription = "Send Image", tint = Color.Gray)
                     }
@@ -221,10 +243,11 @@ fun ChatBubble(
     text: String,
     imageUrl: String?,
     timestamp: Long,
-    isMe: Boolean
+    isMe: Boolean,
+    isPaymentProof: Boolean = false
 ) {
-    val backgroundColor = if (isMe) Color(0xFF800000) else Color(0xFFF0F0F0)
-    val contentColor = if (isMe) Color.White else Color.Black
+    val backgroundColor = if (isPaymentProof) Color(0xFFE8F5E9) else if (isMe) Color(0xFF800000) else Color(0xFFF0F0F0)
+    val contentColor = if (isPaymentProof) Color(0xFF2E7D32) else if (isMe) Color.White else Color.Black
     val alignment = if (isMe) Alignment.End else Alignment.Start
     val shape = if (isMe) {
         RoundedCornerShape(16.dp, 16.dp, 0.dp, 16.dp)
@@ -239,6 +262,13 @@ fun ChatBubble(
             modifier = Modifier.widthIn(max = 280.dp)
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
+                if (isPaymentProof) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        Icon(Icons.Default.Verified, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("PAYMENT PROOF", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                    }
+                }
                 if (!imageUrl.isNullOrEmpty()) {
                     val imageBytes = remember(imageUrl) { ImageUtils.decodeBase64ToByteArray(imageUrl) }
                     AsyncImage(

@@ -9,5 +9,6 @@ data class ChatMessage(
     val imageUrl: String? = null,
     val fileUrl: String? = null,
     val fileName: String? = null,
+    val isPaymentProof: Boolean = false, // Added field
     val timestamp: Long = System.currentTimeMillis()
 )

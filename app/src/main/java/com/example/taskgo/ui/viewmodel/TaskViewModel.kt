@@ -185,11 +185,44 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun markTaskAsFinished(taskId: String, proofUri: Uri?) {
+        viewModelScope.launch {
+            try {
+                val proofBase64 = proofUri?.let { ImageUtils.uriToBase64(getApplication(), it, 500, 500) }
+                firestore.collection("Tasks").document(taskId).update(
+                    "status", TaskStatus.WAITING_VERIFICATION,
+                    "completionProof", proofBase64
+                ).await()
+                Toast.makeText(getApplication(), "Task marked as finished!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "MarkFinished Error", e)
+            }
+        }
+    }
+
     fun completeTask(taskId: String) {
         firestore.collection("Tasks").document(taskId).update(
             "status", TaskStatus.COMPLETED,
             "completionTimestamp", System.currentTimeMillis()
         )
+    }
+
+    fun updatePaymentStatus(taskId: String, status: PaymentStatus, proofUri: Uri? = null) {
+        viewModelScope.launch {
+            try {
+                val proofBase64 = proofUri?.let { ImageUtils.uriToBase64(getApplication(), it, 500, 500) }
+                val updates = mutableMapOf<String, Any>(
+                    "paymentStatus" to status
+                )
+                if (proofBase64 != null) {
+                    updates["paymentProof"] = proofBase64
+                }
+                firestore.collection("Tasks").document(taskId).update(updates).await()
+                Toast.makeText(getApplication(), "Payment status updated to $status", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "UpdatePaymentStatus Error", e)
+            }
+        }
     }
 
     fun cancelTask(taskId: String) {
@@ -224,7 +257,17 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         docRef.set(report.copy(id = docRef.id))
     }
 
-    fun deleteTask(taskId: String) { firestore.collection("Tasks").document(taskId).delete() }
+    fun deleteTask(taskId: String) {
+        viewModelScope.launch {
+            try {
+                firestore.collection("Tasks").document(taskId).delete().await()
+                Log.d("TaskViewModel", "Task deleted successfully from Firebase: $taskId")
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "Error deleting task: $taskId", e)
+                Toast.makeText(getApplication(), "Error deleting task: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
     fun updateTask(t: Task) { firestore.collection("Tasks").document(t.id).set(t) }
 
     suspend fun getInterestedRunners(ids: List<String>): List<User> {

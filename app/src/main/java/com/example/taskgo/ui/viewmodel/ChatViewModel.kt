@@ -85,7 +85,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         taskTitle: String,
         isSenderRequester: Boolean,
         text: String,
-        imageUrl: String? = null
+        imageUrl: String? = null,
+        isPaymentProof: Boolean = false
     ) {
         if (text.isBlank() && imageUrl == null) return
 
@@ -101,7 +102,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val summaryUpdates = mapOf(
             "taskId" to taskId,
             "taskTitle" to taskTitle,
-            "lastMessage" to text.ifBlank { "[Image]" },
+            "lastMessage" to if (isPaymentProof) "[Payment Proof]" else text.ifBlank { "[Image]" },
             "timestamp" to timestamp,
             "participants" to listOf(requesterId, runnerId),
             "requesterId" to requesterId,
@@ -114,15 +115,24 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         firestore.collection("Conversations").document(convId)
             .set(summaryUpdates, SetOptions.merge())
 
-        val messageMap = mutableMapOf(
+        val messageMap = mutableMapOf<String, Any>(
             "senderId" to senderId,
-            "text" to text,
-            "timestamp" to timestamp
+            "text" to if (isPaymentProof) "Sent payment proof for task: $taskTitle" else text,
+            "timestamp" to timestamp,
+            "isPaymentProof" to isPaymentProof
         )
         if (imageUrl != null) messageMap["imageUrl"] = imageUrl
 
         firestore.collection("Conversations").document(convId)
             .collection("Messages").add(messageMap)
+
+        // If it's payment proof, also update the Task record for the requester/runner/admin to see
+        if (isPaymentProof && imageUrl != null) {
+            firestore.collection("Tasks").document(taskId).update(
+                "paymentProof", imageUrl,
+                "paymentStatus", "PAID" // Auto-set to PAID when proof is sent? Or keep as PENDING?
+            )
+        }
 
         // --- TRIGGER NOTIFICATION ---
         val notificationText = if (imageUrl != null && text.isBlank()) "Sent an image" else text
@@ -141,13 +151,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun uploadImage(uri: Uri, senderId: String, senderName: String, receiverId: String, receiverName: String, taskId: String, taskTitle: String, isRequester: Boolean) {
+    fun uploadImage(uri: Uri, senderId: String, senderName: String, receiverId: String, receiverName: String, taskId: String, taskTitle: String, isRequester: Boolean, isPaymentProof: Boolean = false) {
         viewModelScope.launch {
             _isUploading.value = true
             try {
                 val base64Image = ImageUtils.uriToBase64(getApplication(), uri, 400, 400)
                 if (base64Image != null) {
-                    sendMessage(senderId, senderName, receiverId, receiverName, taskId, taskTitle, isRequester, "", imageUrl = base64Image)
+                    sendMessage(senderId, senderName, receiverId, receiverName, taskId, taskTitle, isRequester, "", imageUrl = base64Image, isPaymentProof = isPaymentProof)
                 }
             } finally {
                 _isUploading.value = false

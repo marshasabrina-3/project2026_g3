@@ -55,7 +55,7 @@ fun MyTasksScreen(
                         MyTaskItem(
                             task = task,
                             onEdit = { taskToEdit = task },
-                            onCancel = { taskViewModel.deleteTask(task.id) }
+                            onCancel = { taskViewModel.cancelTask(task.id) }
                         )
                     }
                 }
@@ -77,6 +77,8 @@ fun MyTasksScreen(
 
 @Composable
 fun MyTaskItem(task: Task, onEdit: () -> Unit, onCancel: () -> Unit) {
+    var showCancelConfirmDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = Color(0xFF1E1E1E))
@@ -103,7 +105,7 @@ fun MyTaskItem(task: Task, onEdit: () -> Unit, onCancel: () -> Unit) {
                     }
                     Spacer(modifier = Modifier.width(8.dp))
                     Button(
-                        onClick = onCancel,
+                        onClick = { showCancelConfirmDialog = true },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679), contentColor = Color.White)
                     ) {
                         Text("Cancel")
@@ -111,5 +113,20 @@ fun MyTaskItem(task: Task, onEdit: () -> Unit, onCancel: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showCancelConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirmDialog = false },
+            title = { Text("Confirm Cancellation?") },
+            text = { Text("Are you sure you want to cancel this task? This action cannot be undone.") },
+            confirmButton = {
+                Button(onClick = {
+                    onCancel()
+                    showCancelConfirmDialog = false
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679))) { Text("Confirm") }
+            },
+            dismissButton = { TextButton(onClick = { showCancelConfirmDialog = false }) { Text("Cancel") } }
+        )
     }
 }

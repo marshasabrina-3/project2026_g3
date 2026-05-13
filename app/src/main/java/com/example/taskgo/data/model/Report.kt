@@ -9,6 +9,7 @@ data class Report(
     val reporterId: String = "",
     val reportedUserId: String? = null,
     val taskId: String? = null,
+    val reason: String = "", // Added reason field
     val description: String = "",
     val status: ReportStatus = ReportStatus.PENDING,
     val timestamp: Long = System.currentTimeMillis()

@@ -41,6 +41,8 @@ import com.example.taskgo.data.model.Report
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
 import com.example.taskgo.util.ImageUtils
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -121,7 +123,7 @@ fun ProfileScreen(
                 )
             }
             "REPORT_ISSUE" -> {
-                ReportIssuePage(onBack = { screenState = "MAIN" })
+                ReportIssuePage(taskViewModel = taskViewModel, user = user, onBack = { screenState = "MAIN" })
             }
         }
 
@@ -311,6 +313,21 @@ fun ProfileMainContent(
 
             Spacer(modifier = Modifier.height(32.dp))
 
+            // Ratings & Reviews Section
+            Text("Ratings & Reviews", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            val reviews = taskViewModel.allReviews.collectAsState().value.filter { it.revieweeId == user?.id }
+            if (reviews.isEmpty()) {
+                Text("No reviews yet.", modifier = Modifier.fillMaxWidth(), color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+            } else {
+                reviews.take(5).forEach { review ->
+                    ReviewItem(review)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+            
             Button(
                 onClick = onLogout,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -558,9 +575,40 @@ fun ReportRunnerDialog(task: Task, onDismiss: () -> Unit, onConfirm: (String) ->
     )
 }
 
+@Composable
+fun ReviewItem(review: Review) {
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                repeat(5) { i ->
+                    Icon(
+                        imageVector = if (i < review.rating) Icons.Default.Star else Icons.Default.StarBorder,
+                        contentDescription = null,
+                        modifier = Modifier.size(14.dp),
+                        tint = if (i < review.rating) Color(0xFFFFB300) else Color.Gray
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                val date = remember(review.timestamp) { 
+                    SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(review.timestamp))
+                }
+                Text(date, fontSize = 10.sp, color = Color.Gray)
+            }
+            if (review.comment.isNotBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(review.comment, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ReportIssuePage(onBack: () -> Unit) {
+fun ReportIssuePage(taskViewModel: TaskViewModel, user: com.example.taskgo.data.model.User?, onBack: () -> Unit) {
     var category by remember { mutableStateOf("Bugs") }
     var reason by remember { mutableStateOf("") }
     val categories = listOf("Bugs", "UI issues", "Performance", "Safety", "Others")
@@ -589,7 +637,20 @@ fun ReportIssuePage(onBack: () -> Unit) {
             }
             OutlinedTextField(value = reason, onValueChange = { reason = it }, modifier = Modifier.fillMaxWidth().height(150.dp), shape = RoundedCornerShape(12.dp), placeholder = { Text("Describe the issue...") })
             Spacer(modifier = Modifier.weight(1f))
-            Button(onClick = onBack, modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000))) { Text("Submit Report") }
+            Button(
+                onClick = {
+                    taskViewModel.addReport(Report(
+                        reporterId = user?.id ?: "",
+                        reason = category,
+                        description = reason
+                    ))
+                    onBack()
+                }, 
+                modifier = Modifier.fillMaxWidth().height(56.dp), 
+                shape = RoundedCornerShape(16.dp), 
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000)),
+                enabled = reason.isNotBlank()
+            ) { Text("Submit Report") }
         }
     }
 }

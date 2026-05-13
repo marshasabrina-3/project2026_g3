@@ -6,13 +6,16 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.taskgo.data.model.Task
+import com.example.taskgo.data.model.TaskStatus
 import com.example.taskgo.ui.viewmodel.TaskViewModel
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -36,7 +39,7 @@ fun RequesterHomeScreen(
         }
     ) { padding ->
         if (myTasks.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = androidx.compose.ui.Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text("No tasks posted yet.")
             }
         } else {
@@ -48,7 +51,7 @@ fun RequesterHomeScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(myTasks) { task ->
-                    TaskItem(task)
+                    TaskItem(task = task, taskViewModel = taskViewModel)
                 }
             }
         }
@@ -56,19 +59,51 @@ fun RequesterHomeScreen(
 }
 
 @Composable
-fun TaskItem(task: Task) {
+fun TaskItem(task: Task, taskViewModel: TaskViewModel) {
+    var showCancelConfirmDialog by remember { mutableStateOf(false) }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(text = task.title, style = MaterialTheme.typography.titleMedium)
-                Text(text = "RM ${String.format("%.2f", task.paymentAmount)}", color = MaterialTheme.colorScheme.primary)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(text = task.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                    Text(text = "RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)}", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                }
+                Text(text = task.status.name, fontSize = MaterialTheme.typography.labelSmall.fontSize, color = if (task.status == TaskStatus.OPEN) Color(0xFF43A047) else Color.Gray, fontWeight = FontWeight.Bold)
             }
-            Text(text = "Status: ${task.status}", style = MaterialTheme.typography.bodySmall)
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(text = task.description, style = MaterialTheme.typography.bodyMedium, maxLines = 2)
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (task.status == TaskStatus.OPEN) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Button(
+                        onClick = { showCancelConfirmDialog = true },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679), contentColor = Color.White),
+                        modifier = Modifier.height(36.dp)
+                    ) {
+                        Text("Cancel Task", fontSize = MaterialTheme.typography.labelMedium.fontSize)
+                    }
+                }
+            }
         }
+    }
+
+    if (showCancelConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showCancelConfirmDialog = false },
+            title = { Text("Confirm deletion?") },
+            text = { Text("Are you sure you want to cancel this task? This action cannot be undone.") },
+            confirmButton = {
+                Button(onClick = {
+                    taskViewModel.deleteTask(task.id)
+                    showCancelConfirmDialog = false
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFCF6679))) { Text("Confirm") }
+            },
+            dismissButton = { TextButton(onClick = { showCancelConfirmDialog = false }) { Text("Cancel") } }
+        )
     }
 }

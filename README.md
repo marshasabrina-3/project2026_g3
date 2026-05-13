@@ -11,37 +11,45 @@ TaskGO is a modern, student-centric marketplace application designed for the UTM
 - **Detailed View**: High-resolution image carousel, detailed descriptions, timestamps (Posted/Completed), and direct access to poster profiles.
 
 ### 🎨 Creation Studio
-- **Post Requests**: Need help with something? Post it here with a title, description, and price.
-- **Offer Services**: Have a skill or a spare vehicle? Offer your services to the community.
-- **Task Management**: Cancel active posts or withdraw applications directly from your history.
-- **Categorized Activity**: Separate lists for Requests and Services to help you stay organized.
+- **Post & Offer**: Post requests or offer services with titles, descriptions, categories, and multiple image attachments.
+- **Task Management**:
+    - **Edit Active Tasks**: Re-navigate to the posting page to update details for any "Open" task.
+    - **Cancel with Confirmation**: Safely cancel tasks with a confirmation dialog; status updates to "Cancelled" in the database.
+- **Categorized Activity**: Separate lists for Requests, Services, and Applications Sent.
 - **Flexible Options**: Opt to include or omit specific deadlines and prices for service offers.
-- **Attachment Support**: Upload up to 7 images per post to provide clear visual context.
+- **Attachment Support**: Upload up to 7 images per post for visual context.
+
+### 🔄 Integrated Task Lifecycle
+- **Proof-Based Completion**:
+    - **Runner**: Marks task as finished by uploading a **Completion Proof** image.
+    - **Requester**: Verifies the proof on the detailed page before clicking **Confirm Completion**.
+- **Payment Verification**:
+    - **Status Tracking**: Manage payment states: **Pending**, **Paid**, or **Disputed**.
+    - **Chat-Integrated Proofs**: Send payment receipts directly via a specialized shortcut in the chat.
+    - **Visual Badges**: Payment proofs are highlighted with "PAYMENT PROOF" badges in the conversation and linked to the task record.
 
 ### 💬 Advanced Chat System
-- **Real-time Messaging**: Instant communication between Requesters and Runners powered by Firebase Firestore.
-- **Task-Contextual Chats**: Every chat is anchored to a specific task, featuring a "Task Reference" card for clarity.
-- **Unread Indicators**: Real-time notification badges on the main navigation and per-conversation unread counts.
-- **Actual Names**: Displays user names (e.g., ALI BIN ALI) instead of internal database IDs for a more human experience.
-- **Image Sharing**: Send images directly within the chat for verification or clarification.
+- **Real-time Messaging**: Instant communication powered by Firebase Firestore.
+- **Task-Contextual**: Chats are anchored to tasks with reference headers.
+- **Unread Tracking**: Badge indicators for unread messages.
+- **Payment Shortcut**: Specialized button for requesters to send transaction proofs instantly.
 
 ### 🛡️ User Reputation & Safety
-- **Public Profiles**: View user names, average star ratings, and total report counts.
-- **Global Ratings**: Average ratings are displayed next to user names everywhere (Home, Chat, Details).
-- **Ratings & Reviews**: Functional rating system after task completion to maintain high community standards.
-- **Reporting System**: Report runners or app issues directly within the app to ensure a safe environment.
+- **Enhanced Profiles**: View user names, average star ratings, and a scrollable list of the latest reviews.
+- **Dynamic Rating System**: Requesters are prompted to rate and review runners immediately after task confirmation.
+- **Reporting System**: 
+    - **User/Task Reporting**: Report fraudulent activity or unprofessional behavior with categorized reasons.
+    - **App Issue Reporting**: Dedicated page to report bugs, UI issues, or safety concerns directly to the dev team.
 
 ## 🛠️ Technical Architecture
 
-- **UI Framework**: Jetpack Compose (Modern, declarative UI).
-- **Backend**: 
-    - **Firebase Authentication**: Secure student sign-in.
-    - **Firebase Firestore**: Real-time NoSQL database with optimized hierarchical storage for chats.
-- **Image Handling**: Optimized Base64 encoding/decoding system (stored in Firestore to minimize storage overhead).
-- **Architecture**: MVVM (Model-View-ViewModel) for clean separation of concerns.
+- **UI Framework**: Jetpack Compose.
+- **Backend**: Firebase Authentication & Firestore.
+- **Storage**: Optimized Base64 image system for quick rendering without external storage dependencies.
+- **Architecture**: MVVM with StateFlow for real-time UI updates.
 
 ## 🎨 Design Language
-TaskGO follows a professional theme utilizing **UTM Maroon (#800000)** as the primary brand color, combined with a clean Material 3 design system and official UTM branding.
+Utilizes **UTM Maroon (#800000)** for branding, combined with Material 3 components and a clean, responsive layout.
 
 ---
 

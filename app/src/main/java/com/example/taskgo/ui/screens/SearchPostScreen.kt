@@ -53,6 +53,7 @@ fun SearchPostScreen(
     var screenState by remember { mutableStateOf("MAIN") }
     val user by userViewModel.currentUser.collectAsState()
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
+    var taskToEdit by remember { mutableStateOf<Task?>(null) }
     val isPosting by taskViewModel.isPosting.collectAsState()
 
     val utmMaroon = Color(0xFF800000)
@@ -76,6 +77,11 @@ fun SearchPostScreen(
                 onReport = { /* Handle report */ },
                 onChat = { otherId, title ->
                     onChat(currentTask.id, otherId, title)
+                },
+                onEdit = { task ->
+                    taskToEdit = task
+                    selectedTaskForDetail = null
+                    screenState = "EDIT"
                 }
             )
         } else if (screenState == "MAIN") {
@@ -87,25 +93,45 @@ fun SearchPostScreen(
                 onTaskClick = { selectedTaskForDetail = it }
             )
         } else {
-            BackHandler { screenState = "MAIN" }
+            BackHandler { 
+                screenState = "MAIN"
+                taskToEdit = null
+            }
             CreateTaskScreen(
-                type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else TaskType.SERVICE,
-                onBack = { screenState = "MAIN" },
-                onConfirm = { title, desc, cat, campus, addr, dead, amt, images ->
-                    taskViewModel.addTask(
-                        title = title,
-                        description = desc,
-                        category = cat,
-                        type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else TaskType.SERVICE,
-                        campus = campus,
-                        address = addr,
-                        deadline = dead,
-                        paymentAmount = amt ?: 0.0,
-                        requesterId = user?.id ?: "unknown",
-                        requesterName = user?.name ?: "Unknown",
-                        imageUris = images
-                    )
+                type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else if (screenState == "CREATE_SERVICE") TaskType.SERVICE else taskToEdit?.type ?: TaskType.REQUEST,
+                taskToEdit = taskToEdit,
+                onBack = { 
                     screenState = "MAIN"
+                    taskToEdit = null
+                },
+                onConfirm = { title, desc, cat, campus, addr, dead, amt, images ->
+                    if (screenState == "EDIT" && taskToEdit != null) {
+                        taskViewModel.updateTask(taskToEdit!!.copy(
+                            title = title,
+                            description = desc,
+                            category = cat,
+                            campus = campus,
+                            address = addr,
+                            deadline = dead,
+                            paymentAmount = amt ?: 0.0
+                        ))
+                    } else {
+                        taskViewModel.addTask(
+                            title = title,
+                            description = desc,
+                            category = cat,
+                            type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else TaskType.SERVICE,
+                            campus = campus,
+                            address = addr,
+                            deadline = dead,
+                            paymentAmount = amt ?: 0.0,
+                            requesterId = user?.id ?: "unknown",
+                            requesterName = user?.name ?: "Unknown",
+                            imageUris = images
+                        )
+                    }
+                    screenState = "MAIN"
+                    taskToEdit = null
                 }
             )
         }
@@ -153,6 +179,89 @@ fun PostMainScreen(
     var applicationsServiceExpanded by remember { mutableStateOf(false) }
     val utmMaroon = Color(0xFF800000)
 
+    var taskToCancel by remember { mutableStateOf<Task?>(null) }
+    var taskToMarkFinished by remember { mutableStateOf<Task?>(null) }
+    var showReviewDialogForTask by remember { mutableStateOf<Task?>(null) }
+
+    val proofPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null && taskToMarkFinished != null) {
+            taskViewModel.markTaskAsFinished(taskToMarkFinished!!.id, uri)
+            taskToMarkFinished = null
+        }
+    }
+
+    if (taskToMarkFinished != null) {
+        AlertDialog(
+            onDismissRequest = { taskToMarkFinished = null },
+            title = { Text("Complete Task", fontWeight = FontWeight.Bold) },
+            text = { Text("Please upload a proof of completion for '${taskToMarkFinished?.title}'.") },
+            confirmButton = {
+                Button(onClick = { proofPickerLauncher.launch("image/*") }) { Text("Upload & Finish") }
+            },
+            dismissButton = { TextButton(onClick = { taskToMarkFinished = null }) { Text("Cancel") } }
+        )
+    }
+
+    if (showReviewDialogForTask != null) {
+        var rating by remember { mutableIntStateOf(5) }
+        var comment by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showReviewDialogForTask = null },
+            title = { Text("Rate your Runner", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(5) { i ->
+                            IconButton(onClick = { rating = i + 1 }) {
+                                Icon(
+                                    imageVector = if (i < rating) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = null,
+                                    tint = if (i < rating) Color(0xFFFFB300) else Color.Gray
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = comment,
+                        onValueChange = { comment = it },
+                        label = { Text("Write a review") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    taskViewModel.addReview(Review(
+                        taskId = showReviewDialogForTask!!.id,
+                        reviewerId = user?.id ?: "",
+                        revieweeId = showReviewDialogForTask!!.runnerId ?: "",
+                        rating = rating,
+                        comment = comment
+                    ))
+                    showReviewDialogForTask = null
+                }) { Text("Submit") }
+            },
+            dismissButton = { TextButton(onClick = { showReviewDialogForTask = null }) { Text("Skip") } }
+        )
+    }
+
+    if (taskToCancel != null) {
+        AlertDialog(
+            onDismissRequest = { taskToCancel = null },
+            title = { Text("Confirm Cancellation?") },
+            text = { Text("Are you sure you want to cancel '${taskToCancel?.title}'? This action cannot be undone.") },
+            confirmButton = {
+                Button(onClick = {
+                    taskViewModel.cancelTask(taskToCancel!!.id)
+                    taskToCancel = null
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("Confirm") }
+            },
+            dismissButton = { TextButton(onClick = { taskToCancel = null }) { Text("No") } }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
@@ -186,11 +295,22 @@ fun PostMainScreen(
             // My Live Posts
             item { SectionLabel("My Live Posts") }
             item {
-                val myRequests = allTasks.filter { it.requesterId == user?.id && it.type == TaskType.REQUEST && it.status != TaskStatus.COMPLETED }
+                val myRequests = allTasks.filter { it.requesterId == user?.id && it.type == TaskType.REQUEST && it.status != TaskStatus.COMPLETED && it.status != TaskStatus.CANCELLED }
                 ExpandableListSection("Requested Tasks", myRequests.size, requestsExpanded, { requestsExpanded = !requestsExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (myRequests.isEmpty()) EmptyHistoryItem("No live requests.")
-                        else myRequests.forEach { CompactHistoryItem(it, { onTaskClick(it) }, onCancel = { taskViewModel.cancelTask(it.id) }) }
+                        else myRequests.forEach { task ->
+                            CompactHistoryItem(
+                                task, 
+                                { onTaskClick(task) }, 
+                                onCancel = if (task.status == TaskStatus.OPEN) { { taskToCancel = task } } else null,
+                                onAction = if (task.status == TaskStatus.WAITING_VERIFICATION) { {
+                                    taskViewModel.completeTask(task.id)
+                                    showReviewDialogForTask = task
+                                } } else null,
+                                actionLabel = if (task.status == TaskStatus.WAITING_VERIFICATION) "Confirm" else null
+                            )
+                        }
                     }
                 }
             }
@@ -199,7 +319,18 @@ fun PostMainScreen(
                 ExpandableListSection("Service Offers", myServices.size, servicesExpanded, { servicesExpanded = !servicesExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (myServices.isEmpty()) EmptyHistoryItem("No live services.")
-                        else myServices.forEach { CompactHistoryItem(it, { onTaskClick(it) }, onCancel = { taskViewModel.cancelTask(it.id) }) }
+                        else myServices.forEach { task ->
+                            CompactHistoryItem(
+                                task, 
+                                { onTaskClick(task) }, 
+                                onCancel = if (task.status == TaskStatus.OPEN) { { taskToCancel = task } } else null,
+                                onAction = if (task.status == TaskStatus.WAITING_VERIFICATION) { {
+                                    taskViewModel.completeTask(task.id)
+                                    showReviewDialogForTask = task
+                                } } else null,
+                                actionLabel = if (task.status == TaskStatus.WAITING_VERIFICATION) "Confirm" else null
+                            )
+                        }
                     }
                 }
             }
@@ -221,7 +352,9 @@ fun PostMainScreen(
                                 task, 
                                 { onTaskClick(task) }, 
                                 if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING",
-                                onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null
+                                onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null,
+                                onAction = if (isChosen && task.status == TaskStatus.ASSIGNED) { { taskToMarkFinished = task } } else null,
+                                actionLabel = if (isChosen && task.status == TaskStatus.ASSIGNED) "Finish" else null
                             )
                         }
                     }
@@ -240,7 +373,9 @@ fun PostMainScreen(
                                 task, 
                                 { onTaskClick(task) }, 
                                 if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING",
-                                onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null
+                                onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null,
+                                onAction = if (isChosen && task.status == TaskStatus.ASSIGNED) { { taskToMarkFinished = task } } else null,
+                                actionLabel = if (isChosen && task.status == TaskStatus.ASSIGNED) "Finish" else null
                             )
                         }
                     }
@@ -295,7 +430,14 @@ fun ExpandableListSection(title: String, count: Int, isExpanded: Boolean, onTogg
 }
 
 @Composable
-fun CompactHistoryItem(task: Task, onClick: () -> Unit, customStatus: String? = null, onCancel: (() -> Unit)? = null) {
+fun CompactHistoryItem(
+    task: Task, 
+    onClick: () -> Unit, 
+    customStatus: String? = null, 
+    onCancel: (() -> Unit)? = null,
+    onAction: (() -> Unit)? = null,
+    actionLabel: String? = null
+) {
     val statusColor = when (customStatus ?: task.status.name) {
         "ACCEPTED", "COMPLETED" -> Color(0xFF2E7D32)
         "REJECTED", "CANCELLED" -> Color(0xFFD32F2F)
@@ -319,11 +461,18 @@ fun CompactHistoryItem(task: Task, onClick: () -> Unit, customStatus: String? = 
                 Text(text = customStatus ?: task.status.name.lowercase().replaceFirstChar { it.uppercase() }, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
             
+            if (onAction != null && actionLabel != null) {
+                Button(onClick = onAction, shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp), modifier = Modifier.height(32.dp)) {
+                    Text(actionLabel, fontSize = 10.sp)
+                }
+                Spacer(modifier = Modifier.width(4.dp))
+            }
+
             if (onCancel != null) {
                 IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Cancel, null, tint = Color.Red, modifier = Modifier.size(20.dp))
                 }
-            } else {
+            } else if (onAction == null) {
                 Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), fontWeight = FontWeight.Black, color = Color(0xFF800000), fontSize = 14.sp)
             }
         }
@@ -339,22 +488,23 @@ fun EmptyHistoryItem(text: String) {
 @Composable
 fun CreateTaskScreen(
     type: TaskType,
+    taskToEdit: Task? = null,
     onBack: () -> Unit,
     onConfirm: (String, String, TaskCategory, String, String, String, Double?, List<Uri>) -> Unit
 ) {
     val context = LocalContext.current
     val calendar = Calendar.getInstance()
-    var title by remember { mutableStateOf("") }
-    var desc by remember { mutableStateOf("") }
-    var campus by remember { mutableStateOf("UTMKL") }
-    var address by remember { mutableStateOf("") }
-    var deadline by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
+    var title by remember { mutableStateOf(taskToEdit?.title ?: "") }
+    var desc by remember { mutableStateOf(taskToEdit?.description ?: "") }
+    var campus by remember { mutableStateOf(taskToEdit?.campus ?: "UTMKL") }
+    var address by remember { mutableStateOf(taskToEdit?.address ?: "") }
+    var deadline by remember { mutableStateOf(taskToEdit?.deadline ?: "") }
+    var amount by remember { mutableStateOf(taskToEdit?.paymentAmount?.toString() ?: "") }
     
-    var hasPrice by remember { mutableStateOf(true) }
-    var hasDeadline by remember { mutableStateOf(true) }
+    var hasPrice by remember { mutableStateOf(taskToEdit?.paymentAmount != 0.0) }
+    var hasDeadline by remember { mutableStateOf(taskToEdit?.deadline?.isNotBlank() ?: true) }
     
-    var selectedCategory by remember { mutableStateOf(TaskCategory.GENERAL) }
+    var selectedCategory by remember { mutableStateOf(taskToEdit?.category ?: TaskCategory.GENERAL) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
@@ -373,7 +523,12 @@ fun CreateTaskScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (type == TaskType.REQUEST) "Post Request" else "Offer Service", fontWeight = FontWeight.Bold) },
+                title = { 
+                    val titleText = if (taskToEdit != null) "Update Task" 
+                                   else if (type == TaskType.REQUEST) "Post Request" 
+                                   else "Offer Service"
+                    Text(titleText, fontWeight = FontWeight.Bold) 
+                },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } }
             )
         },
@@ -383,21 +538,23 @@ fun CreateTaskScreen(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 24.dp).verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Column {
-                Text("Attachments (${selectedImages.size}/7)", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
-                Spacer(modifier = Modifier.height(12.dp))
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (selectedImages.size < 7) {
-                        item {
-                            Surface(modifier = Modifier.size(90.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFFF5F5F5), border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))) {
-                                Box(modifier = Modifier.clickable { photoPickerLauncher.launch("image/*") }, contentAlignment = Alignment.Center) { Icon(Icons.Default.AddAPhoto, null, tint = Color.Gray) }
+            if (taskToEdit == null) {
+                Column {
+                    Text("Attachments (${selectedImages.size}/7)", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (selectedImages.size < 7) {
+                            item {
+                                Surface(modifier = Modifier.size(90.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFFF5F5F5), border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))) {
+                                    Box(modifier = Modifier.clickable { photoPickerLauncher.launch("image/*") }, contentAlignment = Alignment.Center) { Icon(Icons.Default.AddAPhoto, null, tint = Color.Gray) }
+                                }
                             }
                         }
-                    }
-                    items(selectedImages) { uri ->
-                        Box(modifier = Modifier.size(90.dp)) {
-                            AsyncImage(model = uri, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
-                            IconButton(onClick = { selectedImages = selectedImages.filter { it != uri } }, modifier = Modifier.align(Alignment.TopEnd).size(24.dp).padding(4.dp).background(Color.Black.copy(0.4f), CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) }
+                        items(selectedImages) { uri ->
+                            Box(modifier = Modifier.size(90.dp)) {
+                                AsyncImage(model = uri, contentDescription = null, modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(16.dp)), contentScale = ContentScale.Crop)
+                                IconButton(onClick = { selectedImages = selectedImages.filter { it != uri } }, modifier = Modifier.align(Alignment.TopEnd).size(24.dp).padding(4.dp).background(Color.Black.copy(0.4f), CircleShape)) { Icon(Icons.Default.Close, null, tint = Color.White, modifier = Modifier.size(12.dp)) }
+                            }
                         }
                     }
                 }
@@ -441,7 +598,23 @@ fun CreateTaskScreen(
                     OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Price (RM)") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), prefix = { Text("RM ") })
                 }
                 if (hasDeadline) {
-                    OutlinedTextField(value = deadline, onValueChange = { }, label = { Text("Deadline") }, modifier = Modifier.weight(1.5f).clickable { showDateTimePicker() }, readOnly = true, shape = RoundedCornerShape(12.dp), trailingIcon = { Icon(Icons.Default.CalendarMonth, null) })
+                    Box(modifier = Modifier.weight(1.5f)) {
+                        OutlinedTextField(
+                            value = deadline,
+                            onValueChange = { },
+                            label = { Text("Deadline") },
+                            modifier = Modifier.fillMaxWidth(),
+                            readOnly = true,
+                            shape = RoundedCornerShape(12.dp),
+                            trailingIcon = { Icon(Icons.Default.CalendarMonth, null) }
+                        )
+                        // Invisible overlay to capture clicks
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { showDateTimePicker() }
+                        )
+                    }
                 }
             }
 
@@ -457,7 +630,7 @@ fun CreateTaskScreen(
                     else onConfirm(title, desc, selectedCategory, campus, address, finalDeadline, amt, selectedImages)
                 }, 
                 modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000))
-            ) { Text("Publish Task", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
+            ) { Text(if (taskToEdit != null) "Update Task" else "Publish Task", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
             
             Spacer(modifier = Modifier.height(100.dp))
         }

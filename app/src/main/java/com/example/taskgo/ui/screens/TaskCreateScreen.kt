@@ -7,8 +7,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.taskgo.data.model.Task
 import com.example.taskgo.data.model.TaskCategory
 import com.example.taskgo.data.model.TaskStatus
@@ -121,12 +124,21 @@ fun TaskCreateScreen(
                     Text("Don't display deadline")
                 }
             } else {
-                OutlinedTextField(
-                    value = deadline,
-                    onValueChange = { deadline = it },
-                    label = { Text("Deadline") },
+                Button(
+                    onClick = { showDatePicker = true },
                     modifier = Modifier.fillMaxWidth()
-                )
+                ) {
+                    Text(selectedDate?.toString() ?: "Select Deadline Date")
+                }
+                if (selectedDate != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { showTimePicker = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(selectedTime?.toString() ?: "Select Deadline Time")
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             
@@ -143,7 +155,13 @@ fun TaskCreateScreen(
                     val amount = paymentAmount.toDoubleOrNull() ?: 0.0
                     val finalDeadline = if (taskType == TaskType.SERVICE) {
                         if (noDeadline) "No deadline" else "${selectedDate} ${selectedTime}"
-                    } else deadline
+                    } else {
+                        if (selectedDate != null && selectedTime != null) {
+                            "${selectedDate} ${selectedTime}"
+                        } else {
+                            ""
+                        }
+                    }
                     onTaskCreated(title, description, taskType, category, location, finalDeadline, amount)
                 },
                 modifier = Modifier.fillMaxWidth(),
@@ -178,15 +196,42 @@ fun TaskCreateScreen(
             onDismissRequest = { showTimePicker = false },
             title = { Text("Select Time") },
             text = {
-                Row {
-                    OutlinedTextField(value = hour, onValueChange = { hour = it }, label = { Text("Hour") }, modifier = Modifier.weight(1f))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedTextField(value = minute, onValueChange = { minute = it }, label = { Text("Minute") }, modifier = Modifier.weight(1f))
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("Hour", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        repeat(24) { h ->
+                            FilterChip(
+                                selected = hour.toIntOrNull() == h,
+                                onClick = { hour = h.toString() },
+                                label = { Text(h.toString().padStart(2, '0'), fontSize = 10.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                            if ((h + 1) % 6 == 0 && h < 23) {
+                                Spacer(modifier = Modifier.width(0.dp))
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Minute", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
+                            FilterChip(
+                                selected = minute.toIntOrNull() == m,
+                                onClick = { minute = m.toString() },
+                                label = { Text(m.toString().padStart(2, '0'), fontSize = 10.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    selectedTime = LocalTime.of(hour.toIntOrNull() ?: 0, minute.toIntOrNull() ?: 0)
+                    val h = hour.ifBlank { "00" }
+                    val m = minute.ifBlank { "00" }
+                    selectedTime = LocalTime.of(h.toIntOrNull() ?: 0, m.toIntOrNull() ?: 0)
                     showTimePicker = false
                 }) { Text("OK") }
             },
@@ -312,13 +357,23 @@ fun TaskEditScreen(
                     Text("Don't display deadline")
                 }
             } else {
-                OutlinedTextField(
-                    value = deadline,
-                    onValueChange = { deadline = it },
-                    label = { Text("Deadline") },
+                Button(
+                    onClick = { if (isEditable) showDatePicker = true },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = isEditable
-                )
+                ) {
+                    Text(selectedDate?.toString() ?: "Select Deadline Date")
+                }
+                if (selectedDate != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Button(
+                        onClick = { if (isEditable) showTimePicker = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = isEditable
+                    ) {
+                        Text(selectedTime?.toString() ?: "Select Deadline Time")
+                    }
+                }
             }
             Spacer(modifier = Modifier.height(8.dp))
             OutlinedTextField(
@@ -334,7 +389,13 @@ fun TaskEditScreen(
                     val amount = paymentAmount.toDoubleOrNull() ?: 0.0
                     val finalDeadline = if (taskType == TaskType.SERVICE) {
                         if (noDeadline) "No deadline" else "${selectedDate} ${selectedTime}"
-                    } else deadline
+                    } else {
+                        if (selectedDate != null && selectedTime != null) {
+                            "${selectedDate} ${selectedTime}"
+                        } else {
+                            ""
+                        }
+                    }
                     val updatedTask = task.copy(
                         title = title,
                         description = description,
@@ -379,15 +440,39 @@ fun TaskEditScreen(
             onDismissRequest = { showTimePicker = false },
             title = { Text("Select Time") },
             text = {
-                Row {
-                    OutlinedTextField(value = hour, onValueChange = { hour = it }, label = { Text("Hour") }, modifier = Modifier.weight(1f), enabled = isEditable)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    OutlinedTextField(value = minute, onValueChange = { minute = it }, label = { Text("Minute") }, modifier = Modifier.weight(1f), enabled = isEditable)
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("Hour", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        repeat(24) { h ->
+                            FilterChip(
+                                selected = hour.toIntOrNull() == h,
+                                onClick = { hour = h.toString() },
+                                label = { Text(h.toString().padStart(2, '0'), fontSize = 10.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Minute", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
+                            FilterChip(
+                                selected = minute.toIntOrNull() == m,
+                                onClick = { minute = m.toString() },
+                                label = { Text(m.toString().padStart(2, '0'), fontSize = 10.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    selectedTime = LocalTime.of(hour.toIntOrNull() ?: 0, minute.toIntOrNull() ?: 0)
+                    val h = hour.ifBlank { "00" }
+                    val m = minute.ifBlank { "00" }
+                    selectedTime = LocalTime.of(h.toIntOrNull() ?: 0, m.toIntOrNull() ?: 0)
                     showTimePicker = false
                 }, enabled = isEditable) { Text("OK") }
             },

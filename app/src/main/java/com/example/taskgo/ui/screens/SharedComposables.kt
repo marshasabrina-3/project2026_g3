@@ -1,5 +1,9 @@
 package com.example.taskgo.ui.screens
 
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,6 +27,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,9 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.TextUnit
 import coil.compose.AsyncImage
-import com.example.taskgo.data.model.Task
-import com.example.taskgo.data.model.TaskStatus
-import com.example.taskgo.data.model.User
+import com.example.taskgo.data.model.*
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
 import com.example.taskgo.util.ImageUtils
@@ -73,26 +76,162 @@ fun NameWithRating(name: String, rating: Double, modifier: Modifier = Modifier, 
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
     var title by remember { mutableStateOf(task.title) }
     var desc by remember { mutableStateOf(task.description) }
+    var address by remember { mutableStateOf(task.address) }
+    var deadline by remember { mutableStateOf(task.deadline) }
     var amount by remember { mutableStateOf(task.paymentAmount.toString()) }
+    var selectedCategory by remember { mutableStateOf(task.category) }
+    var campus by remember { mutableStateOf(task.campus) }
+
+    // Date/Time picker state
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    var hour by remember { mutableStateOf("") }
+    var minute by remember { mutableStateOf("") }
+    val datePickerState = androidx.compose.material3.rememberDatePickerState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color.White,
-        title = { Text("Edit Task", fontWeight = FontWeight.Bold) },
+        title = { Text("Update Task", fontWeight = FontWeight.Bold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount") }, modifier = Modifier.fillMaxWidth())
+                
+                Column {
+                    Text("Category", fontSize = 12.sp, color = Color.Gray)
+                    FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TaskCategory.entries.forEach { cat ->
+                            FilterChip(
+                                selected = selectedCategory == cat,
+                                onClick = { selectedCategory = cat },
+                                label = { Text(cat.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { campus = "UTMKL" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMKL") Color(0xFF800000) else Color(0xFFF5F5F5), contentColor = if (campus == "UTMKL") Color.White else Color.Gray)) { Text("UTMKL", fontSize = 10.sp) }
+                    Button(onClick = { campus = "UTMJB" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMJB") Color(0xFF800000) else Color(0xFFF5F5F5), contentColor = if (campus == "UTMJB") Color.White else Color.Gray)) { Text("UTMJB", fontSize = 10.sp) }
+                }
+
+                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Address") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Price (RM)") }, modifier = Modifier.fillMaxWidth())
+
+                // Deadline field with calendar picker
+                Text("Deadline", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                Button(
+                    onClick = { showDatePicker = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Select Deadline Date: ${deadline.substringBefore(" ").ifBlank { "Not Set" }}")
+                }
+
+                if (deadline.isNotBlank() && !deadline.contains("No deadline")) {
+                    Button(
+                        onClick = { showTimePicker = true },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Set Time: ${deadline.substringAfter(" ").ifBlank { "Not Set" }}")
+                    }
+                }
+
+                OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 3)
             }
         },
-        confirmButton = { Button(onClick = { onSave(task.copy(title = title, description = desc, paymentAmount = amount.toDoubleOrNull() ?: task.paymentAmount)) }) { Text("Save") } },
+        confirmButton = { 
+            Button(onClick = { 
+                onSave(task.copy(
+                    title = title, 
+                    description = desc, 
+                    address = address,
+                    deadline = deadline,
+                    category = selectedCategory,
+                    campus = campus,
+                    paymentAmount = amount.toDoubleOrNull() ?: task.paymentAmount
+                )) 
+            }) { Text("Update") } 
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
+
+    // Date picker dialog
+    if (showDatePicker) {
+        androidx.compose.material3.DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let {
+                        val date = java.time.LocalDate.ofEpochDay(it / (24 * 60 * 60 * 1000))
+                        val existingTime = deadline.substringAfter(" ").ifBlank { "00:00" }
+                        deadline = "$date $existingTime"
+                    }
+                    showDatePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
+            }
+        ) {
+            androidx.compose.material3.DatePicker(state = datePickerState)
+        }
+    }
+
+    // Time picker dialog
+    if (showTimePicker) {
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Select Time") },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Text("Hour", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp).verticalScroll(rememberScrollState())) {
+                        repeat(24) { h ->
+                            FilterChip(
+                                selected = hour.toIntOrNull() == h,
+                                onClick = { hour = h.toString() },
+                                label = { Text(h.toString().padStart(2, '0'), fontSize = 10.sp) },
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("Minute", fontSize = 12.sp, color = Color.Gray)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                        listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
+                            FilterChip(
+                                selected = minute.toIntOrNull() == m,
+                                onClick = { minute = m.toString() },
+                                label = { Text(m.toString().padStart(2, '0'), fontSize = 10.sp) },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val h = hour.ifBlank { "00" }
+                    val m = minute.ifBlank { "00" }
+                    val date = deadline.substringBefore(" ").ifBlank { java.time.LocalDate.now().toString() }
+                    deadline = "$date ${h.padStart(2, '0')}:${m.padStart(2, '0')}"
+                    hour = ""
+                    minute = ""
+                    showTimePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            }
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,6 +244,7 @@ fun TaskDetailScreen(
     onAccept: () -> Unit,
     onReport: () -> Unit,
     onChat: (String, String) -> Unit,
+    onEdit: (Task) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val currentUser by userViewModel.currentUser.collectAsState()
@@ -113,6 +253,21 @@ fun TaskDetailScreen(
 
     var interestedRunners by remember { mutableStateOf<List<User>>(emptyList()) }
     var showConfirmCompleteDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showReviewDialog by remember { mutableStateOf(false) }
+    var showReportDialog by remember { mutableStateOf(false) }
+
+    val proofPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            taskViewModel.markTaskAsFinished(task.id, uri)
+        }
+    }
+
+    val paymentProofPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            taskViewModel.updatePaymentStatus(task.id, PaymentStatus.PAID, uri)
+        }
+    }
 
     LaunchedEffect(task.interestedRunnerIds) {
         if (isRequester) {
@@ -136,7 +291,7 @@ fun TaskDetailScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             OutlinedIconButton(
-                                onClick = onReport,
+                                onClick = { showReportDialog = true },
                                 modifier = Modifier.size(54.dp),
                                 shape = RoundedCornerShape(16.dp),
                                 border = BorderStroke(1.5.dp, Color(0xFFE57373))
@@ -191,12 +346,13 @@ fun TaskDetailScreen(
                              
                              if (task.status == TaskStatus.ASSIGNED) {
                                  Button(
-                                    onClick = { taskViewModel.updateTask(task.copy(status = TaskStatus.WAITING_VERIFICATION)) },
+                                    onClick = { proofPickerLauncher.launch("image/*") },
                                     modifier = Modifier.height(54.dp).weight(0.6f),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2196F3)),
                                     shape = RoundedCornerShape(16.dp)
                                  ) {
-                                     Text("Mark Finished", fontWeight = FontWeight.Bold)
+                                     Icon(Icons.Default.FileUpload, null)
+                                     Text(" Mark Finished", fontWeight = FontWeight.Bold)
                                  }
                              } else if (task.status == TaskStatus.WAITING_VERIFICATION) {
                                  Button(onClick = {}, enabled = false, modifier = Modifier.height(54.dp).weight(0.6f), shape = RoundedCornerShape(16.dp)) {
@@ -245,13 +401,22 @@ fun TaskDetailScreen(
                                 Icon(Icons.Default.MoreVert, null, tint = Color.White)
                             }
                             DropdownMenu(expanded = showMenu, onDismissRequest = { showMenu = false }) {
+                                if (task.status == TaskStatus.OPEN) {
+                                    DropdownMenuItem(
+                                        text = { Text("Update Task") },
+                                        leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                        onClick = {
+                                            showMenu = false
+                                            onEdit(task)
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = { Text("Cancel Task", color = Color.Red) },
                                     leadingIcon = { Icon(Icons.Default.Delete, null, tint = Color.Red) },
                                     onClick = {
                                         showMenu = false
-                                        taskViewModel.cancelTask(task.id)
-                                        onBack()
+                                        showDeleteConfirmDialog = true
                                     }
                                 )
                             }
@@ -300,6 +465,82 @@ fun TaskDetailScreen(
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(text = task.campus, fontWeight = FontWeight.Bold, color = utmMaroon)
                             Text(text = task.address, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                        }
+                    }
+
+                    // Completion Proof Section
+                    if (task.completionProof != null || (isRequester && task.status == TaskStatus.WAITING_VERIFICATION)) {
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.TaskAlt, null, tint = Color(0xFF43A047), modifier = Modifier.size(24.dp))
+                            Text(" Completion Proof", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        }
+                        Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)), shape = RoundedCornerShape(16.dp)) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                if (task.completionProof != null) {
+                                    val proofBytes = remember(task.completionProof) { ImageUtils.decodeBase64ToByteArray(task.completionProof) }
+                                    AsyncImage(model = proofBytes, contentDescription = "Proof", modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
+                                } else {
+                                    Text("Runner has not uploaded proof yet.", color = Color.Gray, fontSize = 13.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // Payment Status Section
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Payments, null, tint = utmMaroon, modifier = Modifier.size(24.dp))
+                        Text(" Payment Status", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                    }
+                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)), shape = RoundedCornerShape(16.dp)) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Surface(color = when(task.paymentStatus) {
+                                    PaymentStatus.PAID -> Color(0xFFE8F5E9)
+                                    PaymentStatus.DISPUTED -> Color(0xFFFFEBEE)
+                                    else -> Color(0xFFFFF3E0)
+                                }, shape = CircleShape) {
+                                    Text(text = task.paymentStatus.name, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = when(task.paymentStatus) {
+                                        PaymentStatus.PAID -> Color(0xFF2E7D32)
+                                        PaymentStatus.DISPUTED -> Color(0xFFD32F2F)
+                                        else -> Color(0xFFE65100)
+                                    })
+                                }
+                                
+                                if (isRequester && task.status != TaskStatus.COMPLETED && task.status != TaskStatus.CANCELLED) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        IconButton(onClick = { taskViewModel.updatePaymentStatus(task.id, PaymentStatus.PAID) }) {
+                                            Icon(Icons.Default.CheckCircle, "Paid", tint = Color(0xFF43A047))
+                                        }
+                                        IconButton(onClick = { taskViewModel.updatePaymentStatus(task.id, PaymentStatus.DISPUTED) }) {
+                                            Icon(Icons.Default.Gavel, "Dispute", tint = Color(0xFFD32F2F))
+                                        }
+                                        IconButton(onClick = { paymentProofPickerLauncher.launch("image/*") }) {
+                                            Icon(Icons.Default.FileUpload, "Upload Proof", tint = utmMaroon)
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if (task.paymentProof != null) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Text("Payment Proof:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                                val payProofBytes = remember(task.paymentProof) { ImageUtils.decodeBase64ToByteArray(task.paymentProof) }
+                                AsyncImage(model = payProofBytes, contentDescription = "Payment Proof", modifier = Modifier.fillMaxWidth().height(150.dp).padding(top = 4.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
+                            }
+                            
+                            if (!isRequester && task.runnerId == currentUser?.id) {
+                                Button(
+                                    onClick = { onChat(task.requesterId, task.title) },
+                                    modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = utmMaroon),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Icon(Icons.AutoMirrored.Filled.Chat, null, modifier = Modifier.size(16.dp))
+                                    Text(" Chat about Payment", fontSize = 12.sp)
+                                }
+                            }
                         }
                     }
 
@@ -415,13 +656,128 @@ fun TaskDetailScreen(
         }
     }
 
+    if (showDeleteConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmDialog = false },
+            title = { Text("Confirm Cancellation?") },
+            text = { Text("Are you sure you want to cancel this task? This action cannot be undone.") },
+            confirmButton = { 
+                Button(onClick = { 
+                    taskViewModel.cancelTask(task.id)
+                    showDeleteConfirmDialog = false
+                    onBack()
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("Confirm") }
+            },
+            dismissButton = { TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("Cancel") } }
+        )
+    }
+
     if (showConfirmCompleteDialog) {
         AlertDialog(
             onDismissRequest = { showConfirmCompleteDialog = false },
             title = { Text("Confirm Completion", fontWeight = FontWeight.Bold) },
             text = { Text("Marking this task as complete is permanent.") },
-            confirmButton = { Button(onClick = { taskViewModel.completeTask(task.id); showConfirmCompleteDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))) { Text("Confirm") } },
+            confirmButton = { 
+                Button(onClick = { 
+                    taskViewModel.completeTask(task.id)
+                    showConfirmCompleteDialog = false
+                    showReviewDialog = true
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047))) { Text("Confirm") } 
+            },
             dismissButton = { TextButton(onClick = { showConfirmCompleteDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showReviewDialog) {
+        var rating by remember { mutableIntStateOf(5) }
+        var comment by remember { mutableStateOf("") }
+        
+        AlertDialog(
+            onDismissRequest = { showReviewDialog = false },
+            title = { Text("Rate your Runner", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        repeat(5) { i ->
+                            IconButton(onClick = { rating = i + 1 }) {
+                                Icon(
+                                    imageVector = if (i < rating) Icons.Default.Star else Icons.Default.StarBorder,
+                                    contentDescription = null,
+                                    tint = if (i < rating) Color(0xFFFFB300) else Color.Gray
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = comment,
+                        onValueChange = { comment = it },
+                        label = { Text("Write a review (optional)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    taskViewModel.addReview(Review(
+                        taskId = task.id,
+                        reviewerId = currentUser?.id ?: "",
+                        revieweeId = task.runnerId ?: "",
+                        rating = rating,
+                        comment = comment
+                    ))
+                    showReviewDialog = false
+                }) { Text("Submit") }
+            },
+            dismissButton = { TextButton(onClick = { showReviewDialog = false }) { Text("Skip") } }
+        )
+    }
+
+    if (showReportDialog) {
+        var reason by remember { mutableStateOf("Fraud") }
+        var description by remember { mutableStateOf("") }
+        val reasons = listOf("Fraud", "Incomplete Work", "Unprofessional Behavior", "Payment Issue", "Other")
+        
+        val context = LocalContext.current
+
+        AlertDialog(
+            onDismissRequest = { showReportDialog = false },
+            title = { Text("Report Issue", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Select a reason:", fontSize = 12.sp, color = Color.Gray)
+                    Column {
+                        reasons.forEach { r ->
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { reason = r }) {
+                                RadioButton(selected = reason == r, onClick = { reason = r })
+                                Text(r, fontSize = 14.sp)
+                            }
+                        }
+                    }
+                    OutlinedTextField(
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text("Describe the issue") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    taskViewModel.addReport(Report(
+                        taskId = task.id,
+                        reporterId = currentUser?.id ?: "",
+                        reportedUserId = if (isRequester) task.runnerId ?: "" else task.requesterId,
+                        reason = reason,
+                        description = description
+                    ))
+                    showReportDialog = false
+                    Toast.makeText(context, "Report submitted", Toast.LENGTH_SHORT).show()
+                }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) { Text("Submit Report") }
+            },
+            dismissButton = { TextButton(onClick = { showReportDialog = false }) { Text("Cancel") } }
         )
     }
 }
