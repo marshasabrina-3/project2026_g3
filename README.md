@@ -4,20 +4,22 @@ TaskGO is a modern, student-centric marketplace application designed for the UTM
 
 ## 🌟 Key Features
 
-### 🛒 Dynamic Marketplace
-- **Explore Tasks**: A unified feed of "Open Requests" and "Service Offers".
-- **Advanced Filtering**: Filter by category (Food, Carpool, Printing, etc.) and campus (UTMKL or UTMJB).
-- **Smart Sorting**: Sort tasks by Newest First, Highest/Lowest Price, or Alphabetically.
-- **Detailed View**: High-resolution image carousel, detailed descriptions, timestamps (Posted/Completed), and direct access to poster profiles.
-
 ### 🎨 Creation Studio
 - **Post & Offer**: Post requests or offer services with titles, descriptions, categories, and multiple image attachments.
+- **Auto-Expanding Workspace**: Creation Studio sections (Requested Tasks, Service Offers, Applications) now automatically expand if they contain active items, ensuring immediate focus on your current tasks.
 - **Task Management**:
     - **Edit Active Tasks**: Re-navigate to the posting page to update details for any "Open" task.
     - **Cancel with Confirmation**: Safely cancel tasks with a confirmation dialog; status updates to "Cancelled" in the database.
 - **Categorized Activity**: Separate lists for Requests, Services, and Applications Sent.
 - **Flexible Options**: Opt to include or omit specific deadlines and prices for service offers.
 - **Attachment Support**: Upload up to 7 images per post for visual context.
+
+### 🛒 Dynamic Marketplace
+- **Explore Tasks**: A unified feed of "Open Requests" and "Service Offers".
+- **Enhanced UI Clarity**: Redesigned filter dropdowns with high-contrast labels and bold typography for superior readability in the "Explore" tab.
+- **Advanced Filtering**: Filter by category (Food, Carpool, Printing, etc.) and campus (UTMKL or UTMJB).
+- **Smart Sorting**: Sort tasks by Newest First, Highest/Lowest Price, or Alphabetically.
+- **Detailed View**: High-resolution image carousel, detailed descriptions, timestamps (Posted/Completed), and direct access to poster profiles.
 
 ### 🔄 Integrated Task Lifecycle
 - **Proof-Based Completion**:

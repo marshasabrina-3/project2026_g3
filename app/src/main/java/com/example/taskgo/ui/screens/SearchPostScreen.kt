@@ -1,7 +1,5 @@
 package com.example.taskgo.ui.screens
 
-import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -41,7 +39,11 @@ import coil.compose.AsyncImage
 import com.example.taskgo.data.model.*
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
-import java.util.*
+import java.time.format.DateTimeFormatter
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+
 
 @Composable
 fun SearchPostScreen(
@@ -173,10 +175,30 @@ fun PostMainScreen(
     onTaskClick: (Task) -> Unit
 ) {
     val allTasks by taskViewModel.allTasks.collectAsState()
+    
+    // Controlled expansion states
     var requestsExpanded by remember { mutableStateOf(true) }
-    var servicesExpanded by remember { mutableStateOf(false) }
-    var applicationsRequestExpanded by remember { mutableStateOf(false) }
-    var applicationsServiceExpanded by remember { mutableStateOf(false) }
+    var servicesExpanded by remember { mutableStateOf(true) }
+    var applicationsRequestExpanded by remember { mutableStateOf(true) }
+    var applicationsServiceExpanded by remember { mutableStateOf(true) }
+
+    // Auto-expand/collapse based on data load (only once or when tasks change from empty to non-empty)
+    var hasInitializedExpansion by remember { mutableStateOf(false) }
+    LaunchedEffect(allTasks, user) {
+        if (allTasks.isNotEmpty() && user != null && !hasInitializedExpansion) {
+            val myRequests = allTasks.filter { it.requesterId == user.id && it.type == TaskType.REQUEST && it.status != TaskStatus.COMPLETED && it.status != TaskStatus.CANCELLED }
+            val myServices = allTasks.filter { it.requesterId == user.id && it.type == TaskType.SERVICE && it.status != TaskStatus.COMPLETED && it.status != TaskStatus.CANCELLED }
+            val appliedRequests = allTasks.filter { (it.interestedRunnerIds.contains(user.id) || it.runnerId == user.id) && it.type == TaskType.REQUEST && it.status != TaskStatus.CANCELLED }
+            val appliedServices = allTasks.filter { (it.interestedRunnerIds.contains(user.id) || it.runnerId == user.id) && it.type == TaskType.SERVICE && it.status != TaskStatus.CANCELLED }
+
+            requestsExpanded = myRequests.isNotEmpty()
+            servicesExpanded = myServices.isNotEmpty()
+            applicationsRequestExpanded = appliedRequests.isNotEmpty()
+            applicationsServiceExpanded = appliedServices.isNotEmpty()
+            hasInitializedExpansion = true
+        }
+    }
+
     val utmMaroon = Color(0xFF800000)
 
     var taskToCancel by remember { mutableStateOf<Task?>(null) }
@@ -492,8 +514,6 @@ fun CreateTaskScreen(
     onBack: () -> Unit,
     onConfirm: (String, String, TaskCategory, String, String, String, Double?, List<Uri>) -> Unit
 ) {
-    val context = LocalContext.current
-    val calendar = Calendar.getInstance()
     var title by remember { mutableStateOf(taskToEdit?.title ?: "") }
     var desc by remember { mutableStateOf(taskToEdit?.description ?: "") }
     var campus by remember { mutableStateOf(taskToEdit?.campus ?: "UTMKL") }
@@ -508,16 +528,19 @@ fun CreateTaskScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        if (uris.isNotEmpty()) selectedImages = (selectedImages + uris).take(7)
+    var showDatePicker by remember { mutableStateOf(false) }
+    var showTimePicker by remember { mutableStateOf(false) }
+    val datePickerState = rememberDatePickerState()
+    
+    // Explicitly reset selection when opening to avoid old state issues
+    LaunchedEffect(showDatePicker) {
+        if (showDatePicker && taskToEdit == null) {
+            // Optional: reset to today
+        }
     }
 
-    fun showDateTimePicker() {
-        DatePickerDialog(context, { _, year, month, day ->
-            TimePickerDialog(context, { _, hour, minute ->
-                deadline = "%02d/%02d/%d %02d:%02d".format(day, month + 1, year, hour, minute)
-            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
-        }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
+    val photoPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) selectedImages = (selectedImages + uris).take(7)
     }
 
     Scaffold(
@@ -598,22 +621,34 @@ fun CreateTaskScreen(
                     OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Price (RM)") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), prefix = { Text("RM ") })
                 }
                 if (hasDeadline) {
-                    Box(modifier = Modifier.weight(1.5f)) {
-                        OutlinedTextField(
-                            value = deadline,
-                            onValueChange = { },
-                            label = { Text("Deadline") },
-                            modifier = Modifier.fillMaxWidth(),
-                            readOnly = true,
-                            shape = RoundedCornerShape(12.dp),
-                            trailingIcon = { Icon(Icons.Default.CalendarMonth, null) }
-                        )
-                        // Invisible overlay to capture clicks
-                        Box(
+                    Surface(
+                        modifier = Modifier
+                            .weight(1.5f)
+                            .height(60.dp)
+                            .clickable { showDatePicker = true },
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, Color.LightGray),
+                        color = Color.White
+                    ) {
+                        Row(
                             modifier = Modifier
-                                .matchParentSize()
-                                .clickable { showDateTimePicker() }
-                        )
+                                .fillMaxSize()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("Deadline", fontSize = 12.sp, color = Color.Gray)
+                                Text(
+                                    text = deadline.ifBlank { "Select Date/Time" },
+                                    fontSize = 14.sp,
+                                    color = if (deadline.isBlank()) Color.LightGray else Color.Black,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                            Icon(Icons.Default.CalendarMonth, null, tint = Color(0xFF800000), modifier = Modifier.size(20.dp))
+                        }
                     }
                 }
             }
@@ -634,5 +669,52 @@ fun CreateTaskScreen(
             
             Spacer(modifier = Modifier.height(100.dp))
         }
+    }
+
+    if (showDatePicker) {
+        DatePickerDialog(
+            onDismissRequest = { showDatePicker = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    datePickerState.selectedDateMillis?.let {
+                        val date = java.time.LocalDate.ofEpochDay(it / (24 * 60 * 60 * 1000))
+                        deadline = date.toString()
+                        showDatePicker = false
+                        showTimePicker = true
+                    }
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { showDatePicker = false }) { Text("Cancel") } }
+        ) {
+            DatePicker(state = datePickerState)
+        }
+    }
+
+    if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
+            initialMinute = Calendar.getInstance().get(Calendar.MINUTE),
+            is24Hour = true
+        )
+        AlertDialog(
+            onDismissRequest = { showTimePicker = false },
+            title = { Text("Select Time", fontWeight = FontWeight.Bold) },
+            text = {
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TimePicker(state = timePickerState)
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    val h = timePickerState.hour.toString().padStart(2, '0')
+                    val m = timePickerState.minute.toString().padStart(2, '0')
+                    deadline = "${deadline.substringBefore(" ")} $h:$m"
+                    showTimePicker = false
+                }) { Text("OK") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTimePicker = false }) { Text("Cancel") }
+            }
+        )
     }
 }

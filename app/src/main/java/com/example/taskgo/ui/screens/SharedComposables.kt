@@ -3,7 +3,6 @@ package com.example.taskgo.ui.screens
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +39,7 @@ import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
 import com.example.taskgo.util.ImageUtils
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -76,7 +76,7 @@ fun NameWithRating(name: String, rating: Double, modifier: Modifier = Modifier, 
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
     var title by remember { mutableStateOf(task.title) }
@@ -90,9 +90,7 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
     // Date/Time picker state
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
-    var hour by remember { mutableStateOf("") }
-    var minute by remember { mutableStateOf("") }
-    val datePickerState = androidx.compose.material3.rememberDatePickerState()
+    val datePickerState = rememberDatePickerState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -162,7 +160,7 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
 
     // Date picker dialog
     if (showDatePicker) {
-        androidx.compose.material3.DatePickerDialog(
+        DatePickerDialog(
             onDismissRequest = { showDatePicker = false },
             confirmButton = {
                 TextButton(onClick = {
@@ -178,52 +176,31 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
                 TextButton(onClick = { showDatePicker = false }) { Text("Cancel") }
             }
         ) {
-            androidx.compose.material3.DatePicker(state = datePickerState)
+            DatePicker(state = datePickerState)
         }
     }
 
     // Time picker dialog
     if (showTimePicker) {
+        val timePickerState = rememberTimePickerState(
+            initialHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
+            initialMinute = Calendar.getInstance().get(Calendar.MINUTE),
+            is24Hour = true
+        )
         AlertDialog(
             onDismissRequest = { showTimePicker = false },
-            title = { Text("Select Time") },
+            title = { Text("Select Time", fontWeight = FontWeight.Bold) },
             text = {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                    Text("Hour", fontSize = 12.sp, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column(modifier = Modifier.fillMaxWidth().heightIn(max = 150.dp).verticalScroll(rememberScrollState())) {
-                        repeat(24) { h ->
-                            FilterChip(
-                                selected = hour.toIntOrNull() == h,
-                                onClick = { hour = h.toString() },
-                                label = { Text(h.toString().padStart(2, '0'), fontSize = 10.sp) },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Minute", fontSize = 12.sp, color = Color.Gray)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        listOf(0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55).forEach { m ->
-                            FilterChip(
-                                selected = minute.toIntOrNull() == m,
-                                onClick = { minute = m.toString() },
-                                label = { Text(m.toString().padStart(2, '0'), fontSize = 10.sp) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    TimePicker(state = timePickerState)
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    val h = hour.ifBlank { "00" }
-                    val m = minute.ifBlank { "00" }
+                    val h = timePickerState.hour.toString().padStart(2, '0')
+                    val m = timePickerState.minute.toString().padStart(2, '0')
                     val date = deadline.substringBefore(" ").ifBlank { java.time.LocalDate.now().toString() }
-                    deadline = "$date ${h.padStart(2, '0')}:${m.padStart(2, '0')}"
-                    hour = ""
-                    minute = ""
+                    deadline = "$date $h:$m"
                     showTimePicker = false
                 }) { Text("OK") }
             },
@@ -244,8 +221,8 @@ fun TaskDetailScreen(
     onAccept: () -> Unit,
     onReport: () -> Unit,
     onChat: (String, String) -> Unit,
-    onEdit: (Task) -> Unit = {},
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onEdit: (Task) -> Unit = {}
 ) {
     val currentUser by userViewModel.currentUser.collectAsState()
     val isRequester = currentUser?.id == task.requesterId
@@ -434,7 +411,7 @@ fun TaskDetailScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
                         DetailBadge(text = task.category.name, color = utmMaroon)
-                        DetailBadge(text = task.type.name, color = if (task.type == com.example.taskgo.data.model.TaskType.REQUEST) Color(0xFF2196F3) else Color(0xFFFF9800))
+                        DetailBadge(text = task.type.name, color = if (task.type == TaskType.REQUEST) Color(0xFF2196F3) else Color(0xFFFF9800))
                     }
 
                     Spacer(modifier = Modifier.height(24.dp))

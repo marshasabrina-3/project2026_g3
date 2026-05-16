@@ -42,7 +42,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MarketplaceScreen(
     taskViewModel: TaskViewModel,
@@ -50,18 +49,27 @@ fun MarketplaceScreen(
     onChat: (String, String, String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val filteredTasks by taskViewModel.filteredTasks.collectAsState(initial = emptyList())
     val searchQuery by taskViewModel.searchQuery.collectAsState()
     val selectedCategory by taskViewModel.selectedCategory.collectAsState()
-    val sortOption by taskViewModel.sortOption.collectAsState()
+    val allTasks by taskViewModel.allTasks.collectAsState()
     
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
     var selectedCampus by remember { mutableStateOf<String?>(null) }
+    var selectedType by remember { mutableStateOf<TaskType?>(null) }
 
-    val displayedTasks = filteredTasks.filter { task ->
-        selectedCampus == null || task.campus == selectedCampus
+    val displayedTasks = remember(allTasks, searchQuery, selectedCategory, selectedCampus, selectedType) {
+        allTasks.filter { task ->
+            val isLive = task.status == TaskStatus.OPEN
+            val matchesSearch = task.title.contains(searchQuery, ignoreCase = true) || 
+                               task.description.contains(searchQuery, ignoreCase = true)
+            val matchesCategory = selectedCategory == null || task.category == selectedCategory
+            val matchesCampus = selectedCampus == null || task.campus == selectedCampus
+            val matchesType = selectedType == null || task.type == selectedType
+            
+            isLive && matchesSearch && matchesCategory && matchesCampus && matchesType
+        }
     }
 
     val utmMaroon = Color(0xFF800000)
@@ -159,30 +167,62 @@ fun MarketplaceScreen(
                 }
             }
 
-            // Fixed Filter Row
-            Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                    item {
-                        FilterChip(selected = selectedCategory == null, onClick = { taskViewModel.onCategoryChange(null) }, label = { Text("All") })
-                    }
-                    items(TaskCategory.entries) { cat ->
-                        FilterChip(
-                            selected = selectedCategory == cat,
-                            onClick = { taskViewModel.onCategoryChange(cat) },
-                            label = { Text(cat.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }) }
-                        )
+            // Dropdown Filters
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                var typeExpanded by remember { mutableStateOf(false) }
+                var categoryExpanded by remember { mutableStateOf(false) }
+                var campusExpanded by remember { mutableStateOf(false) }
+
+                // Type Dropdown
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterDropdown(
+                        label = "Type",
+                        selected = when(selectedType) {
+                            TaskType.REQUEST -> "Requests"
+                            TaskType.SERVICE -> "Services"
+                            else -> "All Tasks"
+                        },
+                        onClick = { typeExpanded = true }
+                    )
+                    DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
+                        DropdownMenuItem(text = { Text("All Tasks") }, onClick = { selectedType = null; typeExpanded = false })
+                        DropdownMenuItem(text = { Text("Requests") }, onClick = { selectedType = TaskType.REQUEST; typeExpanded = false })
+                        DropdownMenuItem(text = { Text("Services") }, onClick = { selectedType = TaskType.SERVICE; typeExpanded = false })
                     }
                 }
-                
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)) {
-                    item {
-                        FilterChip(selected = selectedCampus == null, onClick = { selectedCampus = null }, label = { Text("Both Campus") })
+
+                // Category Dropdown
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterDropdown(
+                        label = "Category",
+                        selected = selectedCategory?.name?.replace("_", " ")?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "All",
+                        onClick = { categoryExpanded = true }
+                    )
+                    DropdownMenu(expanded = categoryExpanded, onDismissRequest = { categoryExpanded = false }) {
+                        DropdownMenuItem(text = { Text("All Categories") }, onClick = { taskViewModel.onCategoryChange(null); categoryExpanded = false })
+                        TaskCategory.entries.forEach { cat ->
+                            DropdownMenuItem(
+                                text = { Text(cat.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }) },
+                                onClick = { taskViewModel.onCategoryChange(cat); categoryExpanded = false }
+                            )
+                        }
                     }
-                    item {
-                        FilterChip(selected = selectedCampus == "UTMKL", onClick = { selectedCampus = "UTMKL" }, label = { Text("UTMKL") })
-                    }
-                    item {
-                        FilterChip(selected = selectedCampus == "UTMJB", onClick = { selectedCampus = "UTMJB" }, label = { Text("UTMJB") })
+                }
+
+                // Campus Dropdown
+                Box(modifier = Modifier.weight(1f)) {
+                    FilterDropdown(
+                        label = "Campus",
+                        selected = selectedCampus ?: "Both",
+                        onClick = { campusExpanded = true }
+                    )
+                    DropdownMenu(expanded = campusExpanded, onDismissRequest = { campusExpanded = false }) {
+                        DropdownMenuItem(text = { Text("Both Campus") }, onClick = { selectedCampus = null; campusExpanded = false })
+                        DropdownMenuItem(text = { Text("UTMKL") }, onClick = { selectedCampus = "UTMKL"; campusExpanded = false })
+                        DropdownMenuItem(text = { Text("UTMJB") }, onClick = { selectedCampus = "UTMJB"; campusExpanded = false })
                     }
                 }
             }
@@ -195,28 +235,30 @@ fun MarketplaceScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                val requests = displayedTasks.filter { it.type == TaskType.REQUEST }
-                val services = displayedTasks.filter { it.type == TaskType.SERVICE }
-
-                if (requests.isNotEmpty()) {
-                    item { SectionHeader("Open Requests", utmMaroon) }
-                    items(requests) { task ->
-                        ModernTaskItem(task = task, taskViewModel = taskViewModel, onClick = { selectedTaskForDetail = task })
-                    }
-                }
-
-                if (services.isNotEmpty()) {
-                    item { Spacer(modifier = Modifier.height(24.dp)) }
-                    item { SectionHeader("Service Offers", utmMaroon) }
-                    items(services) { task ->
-                        ModernTaskItem(task = task, taskViewModel = taskViewModel, onClick = { selectedTaskForDetail = task })
-                    }
-                }
-
                 if (displayedTasks.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
                             Text("No tasks available", color = Color.Gray)
+                        }
+                    }
+                } else {
+                    val requests = displayedTasks.filter { it.type == TaskType.REQUEST }
+                    val services = displayedTasks.filter { it.type == TaskType.SERVICE }
+
+                    if (requests.isNotEmpty()) {
+                        item { SectionHeader("Requests", utmMaroon) }
+                        items(requests) { task ->
+                            ModernTaskItem(task = task, taskViewModel = taskViewModel, onClick = { selectedTaskForDetail = task })
+                        }
+                    }
+
+                    if (services.isNotEmpty()) {
+                        if (requests.isNotEmpty()) {
+                            item { Spacer(modifier = Modifier.height(24.dp)) }
+                        }
+                        item { SectionHeader("Services", utmMaroon) }
+                        items(services) { task ->
+                            ModernTaskItem(task = task, taskViewModel = taskViewModel, onClick = { selectedTaskForDetail = task })
                         }
                     }
                 }
@@ -228,6 +270,52 @@ fun MarketplaceScreen(
 
     if (showFilterSheet) {
         FilterBottomSheet(taskViewModel = taskViewModel, onDismiss = { showFilterSheet = false })
+    }
+}
+
+@Composable
+fun FilterDropdown(label: String, selected: String, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.dp, Color(0xFFE5E5E5)),
+        color = Color.White,
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 10.sp,
+                    color = Color(0xFF800000),
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = 0.5.sp
+                )
+                Text(
+                    text = selected,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.Black,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = Color.Gray
+            )
+        }
     }
 }
 
