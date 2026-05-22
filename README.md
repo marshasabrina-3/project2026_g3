@@ -55,4 +55,4 @@ Utilizes **UTM Maroon (#800000)** for branding, combined with Material 3 compone
 
 ---
 
-*Developed for the Project 2024 UTM community.*
+*Developed for the Project 2026 UTM community.*
