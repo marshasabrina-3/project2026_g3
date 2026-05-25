@@ -6,6 +6,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -30,10 +31,6 @@ class MainActivity : ComponentActivity() {
         askNotificationPermission()
         saveCurrentToken()
 
-        // --- START AUTOMATIC LISTENER ---
-        startNotificationListener()
-        // --- END AUTOMATIC LISTENER ---
-
         enableEdgeToEdge()
         setContent {
             TaskGOTheme {
@@ -43,19 +40,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startNotificationListener() {
-        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
-        val db = FirebaseFirestore.getInstance()
+    private fun saveCurrentToken() {
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                val token = task.result
+                val userId = FirebaseAuth.getInstance().currentUser?.uid
+                if (userId != null) {
+                    FirebaseFirestore.getInstance().collection("Users").document(userId)
+                        .update("fcmToken", token)
+                        .addOnSuccessListener {
+                            Log.d("FCM", "Token updated, starting listener...")
+                            startNotificationListener(userId)
+                        }
+                }
+            }
+        }
+    }
 
-        // Listen for new documents in the "Notifications" collection meant for THIS user
+    private fun startNotificationListener(userId: String) {
+        val db = FirebaseFirestore.getInstance()
         db.collection("Notifications")
-            .whereEqualTo("receiverId", currentUserId)
+            .whereEqualTo("receiverId", userId)
             .whereEqualTo("isRead", false)
             .addSnapshotListener { snapshot, e ->
-                if (e != null) {
-                    Log.w("FCM_LISTEN", "Listen failed.", e)
-                    return@addSnapshotListener
-                }
+                if (e != null) return@addSnapshotListener
 
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type == DocumentChange.Type.ADDED) {
@@ -63,10 +71,7 @@ class MainActivity : ComponentActivity() {
                         val message = change.document.getString("message") ?: ""
                         val docId = change.document.id
 
-                        // Trigger the physical pop-up
                         showLocalNotification(title, message)
-
-                        // Mark as read so it doesn't pop up again next time you open the app
                         db.collection("Notifications").document(docId).update("isRead", true)
                     }
                 }
@@ -82,11 +87,20 @@ class MainActivity : ComponentActivity() {
             notificationManager.createNotificationChannel(channel)
         }
 
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        // URI that points to the Main screen (where your chats usually live)
+        val deepLinkUri = Uri.parse("taskgo://main")
+
+        val intent = Intent(Intent.ACTION_VIEW, deepLinkUri, this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
         val notification = NotificationCompat.Builder(this, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setSmallIcon(R.drawable.utmlogo)
             .setContentTitle(title)
             .setContentText(message)
             .setAutoCancel(true)
@@ -103,20 +117,6 @@ class MainActivity : ComponentActivity() {
                 PackageManager.PERMISSION_GRANTED
             ) {
                 ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
-            }
-        }
-    }
-
-    private fun saveCurrentToken() {
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val token = task.result
-                val userId = FirebaseAuth.getInstance().currentUser?.uid
-                if (userId != null) {
-                    FirebaseFirestore.getInstance().collection("Users").document(userId)
-                        .update("fcmToken", token)
-                        .addOnSuccessListener { Log.d("FCM", "Token updated on startup") }
-                }
             }
         }
     }

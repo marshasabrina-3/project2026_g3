@@ -8,10 +8,11 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.navDeepLink
 import com.example.taskgo.data.model.UserRole
 import com.example.taskgo.ui.screens.*
 import com.example.taskgo.ui.viewmodel.UserViewModel
-
+import androidx.compose.runtime.LaunchedEffect
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Register : Screen("register")
@@ -24,7 +25,6 @@ fun TaskGONavGraph(navController: NavHostController) {
     val userViewModel: UserViewModel = viewModel()
     val currentUser by userViewModel.currentUser.collectAsState()
 
-    // Use a derived state for start destination to handle "Remember Me"
     val startDestination = remember(currentUser) {
         if (currentUser != null) {
             if (currentUser?.role == UserRole.ADMIN) Screen.Admin.route else Screen.Main.route
@@ -40,8 +40,9 @@ fun TaskGONavGraph(navController: NavHostController) {
         composable(Screen.Login.route) {
             LoginScreen(
                 userViewModel = userViewModel,
+                // FIXED FOR TASK #159: Changed parameter type from String to UserRole enum
                 onLoginSuccess = { role ->
-                    val destination = if (role == "ADMIN") Screen.Admin.route else Screen.Main.route
+                    val destination = if (role == UserRole.ADMIN) Screen.Admin.route else Screen.Main.route
                     navController.navigate(destination) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
@@ -51,6 +52,7 @@ fun TaskGONavGraph(navController: NavHostController) {
                 }
             )
         }
+
         composable(Screen.Register.route) {
             RegisterScreen(
                 onRegisterSuccess = {
@@ -63,7 +65,14 @@ fun TaskGONavGraph(navController: NavHostController) {
                 }
             )
         }
-        composable(Screen.Main.route) {
+
+        // UPDATED THIS SECTION FOR DEEP LINK
+        composable(
+            route = Screen.Main.route,
+            deepLinks = listOf(
+                navDeepLink { uriPattern = "taskgo://main" }
+            )
+        ) {
             MainContainerScreen(
                 userViewModel = userViewModel,
                 onLogout = {
@@ -74,16 +83,27 @@ fun TaskGONavGraph(navController: NavHostController) {
                 }
             )
         }
+
         composable(Screen.Admin.route) {
-            AdminHomeScreen(
-                taskViewModel = viewModel(),
-                onLogout = {
-                    userViewModel.logout()
-                    navController.navigate(Screen.Login.route) {
+            // FIXED FOR TASK #160: Added a security guard check block
+            // If profile loads and user is NOT an admin, immediately bounce them to the Login/Main entrance
+            if (currentUser != null && currentUser?.role != UserRole.ADMIN) {
+                LaunchedEffect(Unit) {
+                    navController.navigate(Screen.Main.route) {
                         popUpTo(0) { inclusive = true }
                     }
                 }
-            )
+            } else {
+                AdminHomeScreen(
+                    taskViewModel = viewModel(),
+                    onLogout = {
+                        userViewModel.logout()
+                        navController.navigate(Screen.Login.route) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                )
+            }
         }
     }
 }

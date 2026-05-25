@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.taskgo.data.model.User
+import com.example.taskgo.data.model.UserRole
 import com.example.taskgo.util.ImageUtils
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
@@ -52,18 +53,34 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun login(emailPrefix: String, password: String, rememberMe: Boolean) {
+    // Added a trailing callback lambda (onResult) to pass the user role back to the Login Screen
+    fun login(emailPrefix: String, password: String, rememberMe: Boolean, onResult: (Boolean, UserRole?) -> Unit) {
         val email = if (emailPrefix.contains("@")) emailPrefix else "$emailPrefix@graduate.utm.my"
         viewModelScope.launch {
             _isLoading.value = true
+            _error.value = null
             try {
                 val result = auth.signInWithEmailAndPassword(email, password).await()
-                result.user?.let {
-                    fetchUserProfile(it.uid)
-                    saveToPrefs(it.uid, email, rememberMe)
+                result.user?.let { FirebaseUser ->
+                    // 1. Instantly look up user profile details from Firestore
+                    val document = firestore.collection("Users").document(FirebaseUser.uid).get().await()
+                    val userObject = document.toObject<User>()
+
+                    if (userObject != null) {
+                        _currentUser.value = userObject
+                        saveToPrefs(FirebaseUser.uid, email, rememberMe)
+
+                        Log.d("AUTH_ROLE", "User verified with role: ${userObject.role}")
+                        // 2. Return success alongside the correct UserRole enum type
+                        onResult(true, userObject.role)
+                    } else {
+                        _error.value = "User profile configuration data not found."
+                        onResult(false, null)
+                    }
                 }
             } catch (e: Exception) {
                 _error.value = e.message
+                onResult(false, null)
             } finally {
                 _isLoading.value = false
             }

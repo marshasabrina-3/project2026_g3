@@ -6,7 +6,8 @@ enum class TaskStatus {
     ASSIGNED,        // Task in progress
     WAITING_VERIFICATION, // Runner finished, waiting for requester to verify payment/service
     COMPLETED,
-    CANCELLED
+    CANCELLED,
+    REMOVED
 }
 
 enum class PaymentStatus {

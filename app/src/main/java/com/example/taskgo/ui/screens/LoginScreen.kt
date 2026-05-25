@@ -27,13 +27,14 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.taskgo.R
+import com.example.taskgo.data.model.UserRole
 import com.example.taskgo.ui.viewmodel.UserViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
 
 @Composable
 fun LoginScreen(
     userViewModel: UserViewModel = viewModel(),
-    onLoginSuccess: (String) -> Unit,
+    onLoginSuccess: (UserRole) -> Unit, // Updated from String to your team's UserRole Enum class type
     onNavigateToRegister: () -> Unit
 ) {
     var emailPrefix by remember { mutableStateOf("") }
@@ -41,6 +42,9 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+
+    // Local state to capture and present immediate validation issues (Task #157)
+    var localValidationError by remember { mutableStateOf<String?>(null) }
 
     // UTM Maroon and a darker variant for gradient
     val utmMaroon = Color(0xFF800000)
@@ -119,7 +123,10 @@ fun LoginScreen(
 
                     OutlinedTextField(
                         value = emailPrefix,
-                        onValueChange = { emailPrefix = it },
+                        onValueChange = {
+                            emailPrefix = it
+                            localValidationError = null // Clear message when typing
+                        },
                         label = { Text("UTM Email") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -131,7 +138,10 @@ fun LoginScreen(
 
                     OutlinedTextField(
                         value = password,
-                        onValueChange = { password = it },
+                        onValueChange = {
+                            password = it
+                            localValidationError = null // Clear message when typing
+                        },
                         label = { Text("Password") },
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
@@ -168,7 +178,24 @@ fun LoginScreen(
 
                     Button(
                         onClick = {
-                            userViewModel.login(emailPrefix, password, rememberMe)
+                            val emailTrimmed = emailPrefix.trim()
+                            val passwordTrimmed = password.trim()
+
+                            // 1. Client-Side Login Validation Enforcement Flow (Task #157)
+                            if (emailTrimmed.isEmpty()) {
+                                localValidationError = "UTM Email identifier cannot be left blank!"
+                            } else if (passwordTrimmed.isEmpty()) {
+                                localValidationError = "Account access password cannot be left blank!"
+                            } else {
+                                localValidationError = null
+                                // 2. Trigger async authentication call checking rules from Firestore (Task #158)
+                                userViewModel.login(emailTrimmed, passwordTrimmed, rememberMe) { success, analyzedRole ->
+                                    if (success && analyzedRole != null) {
+                                        // 3. Forward the role enum to control system layout routing rules (Task #159)
+                                        onLoginSuccess(analyzedRole)
+                                    }
+                                }
+                            }
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -183,16 +210,27 @@ fun LoginScreen(
                         }
                     }
 
-                    // Handle success/failure
-                    val currentUser by userViewModel.currentUser.collectAsState()
+                    // Read explicit errors received directly from Firebase execution failures
                     val error by userViewModel.error.collectAsState()
 
-                    LaunchedEffect(currentUser) {
-                        currentUser?.let { onLoginSuccess(it.role.name) }
+                    // Renders local input issues immediately
+                    if (localValidationError != null) {
+                        Text(
+                            text = localValidationError!!,
+                            color = Color.Red,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
 
+                    // Renders structural system or connection faults
                     if (error != null) {
-                        Text(error!!, color = Color.Red, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            text = error!!,
+                            color = Color.Red,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                 }
             }
