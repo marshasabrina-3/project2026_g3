@@ -5,7 +5,7 @@ enum class UserRole {
 }
 
 enum class UserStatus {
-    ACTIVE, BANNED
+    ACTIVE, BANNED, SUSPENDED
 }
 
 data class User(
@@ -19,5 +19,7 @@ data class User(
     val status: UserStatus = UserStatus.ACTIVE,
     val rating: Float = 0f,
     val reportCount: Int = 0,
-    val profileImageUrl: String? = null
+    val profileImageUrl: String? = null,
+    val suspensionStartDate: String? = null,
+    val suspensionEndDate: String? = null
 )

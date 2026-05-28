@@ -52,7 +52,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.coil.compose)
-
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.2")
     // Firebase
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.auth)

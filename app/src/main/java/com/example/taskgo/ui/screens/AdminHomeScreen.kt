@@ -1,11 +1,16 @@
 package com.example.taskgo.ui.screens
 
+import android.graphics.BitmapFactory
+import android.util.Base64
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Logout
@@ -15,6 +20,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -23,19 +31,37 @@ import com.example.taskgo.data.model.Task
 import com.example.taskgo.data.model.TaskCategory
 import com.example.taskgo.data.model.TaskType
 import com.example.taskgo.data.model.TaskStatus
+import com.example.taskgo.data.model.PaymentStatus
 import com.example.taskgo.ui.viewmodel.TaskViewModel
+import com.example.taskgo.ui.viewmodel.UserViewModel
 import java.util.Locale
+
+
+fun decodeBase64ToImageBitmap(base64Str: String?): ImageBitmap? {
+    if (base64Str.isNullOrBlank()) return null
+    return try {
+        val cleanString = if (base64Str.contains(",")) base64Str.substringAfter(",") else base64Str
+        val decodedBytes = Base64.decode(cleanString, Base64.DEFAULT)
+        val bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
+        bitmap?.asImageBitmap()
+    } catch (e: Exception) {
+        null
+    }
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AdminHomeScreen(
     taskViewModel: TaskViewModel,
+    userViewModel: UserViewModel,
     onLogout: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var taskToViewReports by remember { mutableStateOf<Task?>(null) }
+    var taskToViewProofs by remember { mutableStateOf<Task?>(null) }
     var taskToDelete by remember { mutableStateOf<Task?>(null) }
 
     Surface(
@@ -77,19 +103,32 @@ fun AdminHomeScreen(
                         icon = { Icon(Icons.Default.Report, contentDescription = "Reports") },
                         label = { Text("Reports") }
                     )
+                    NavigationBarItem(
+                        selected = selectedTab == 2,
+                        onClick = { selectedTab = 2 },
+                        icon = { Icon(Icons.Default.Person, contentDescription = "Users") },
+                        label = { Text("Users") }
+                    )
                 }
             }
         ) { padding ->
             Box(modifier = Modifier.padding(padding)) {
-                if (selectedTab == 0) {
-                    AdminTasksList(
-                        taskViewModel = taskViewModel,
-                        onEditClick = { taskToEdit = it },
-                        onDeleteClick = { taskToDelete = it },
-                        onReportsClick = { taskToViewReports = it }
-                    )
-                } else {
-                    AdminReportsList(taskViewModel = taskViewModel)
+                when (selectedTab) {
+                    0 -> {
+                        AdminTasksList(
+                            taskViewModel = taskViewModel,
+                            onEditClick = { taskToEdit = it },
+                            onDeleteClick = { taskToDelete = it },
+                            onReportsClick = { taskToViewReports = it },
+                            onProofsClick = { taskToViewProofs = it }
+                        )
+                    }
+                    1 -> {
+                        AdminReportsList(taskViewModel = taskViewModel)
+                    }
+                    2 -> {
+                        AdminUserManagementScreen(userViewModel = userViewModel)
+                    }
                 }
             }
         }
@@ -138,6 +177,14 @@ fun AdminHomeScreen(
         )
     }
 
+    // Ticket #169: Proof view overlay trigger initialization
+    if (taskToViewProofs != null) {
+        AdminTaskProofsDialog(
+            task = taskToViewProofs!!,
+            onDismiss = { taskToViewProofs = null }
+        )
+    }
+
     if (taskToDelete != null) {
         AlertDialog(
             onDismissRequest = { taskToDelete = null },
@@ -173,59 +220,103 @@ fun AdminHomeScreen(
     }
 }
 
+
 @Composable
 fun AdminTasksList(
     taskViewModel: TaskViewModel,
     onEditClick: (Task) -> Unit,
     onDeleteClick: (Task) -> Unit,
-    onReportsClick: (Task) -> Unit
+    onReportsClick: (Task) -> Unit,
+    onProofsClick: (Task) -> Unit
 ) {
     val tasks by taskViewModel.allTasks.collectAsState()
 
-    if (tasks.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No tasks available.", color = Color.Gray)
+    var currentStatusFilter by remember { mutableStateOf("ALL") }
+    val filterOptions = listOf("ALL", "OPEN", "PENDING_APPROVAL", "ASSIGNED", "WAITING_VERIFICATION", "COMPLETED", "CANCELLED", "REMOVED")
+
+    val filteredTasks = remember(tasks, currentStatusFilter) {
+        if (currentStatusFilter == "ALL") {
+            tasks
+        } else {
+            tasks.filter { task ->
+                val statusStr = task.status.toString().uppercase(Locale.ROOT)
+                statusStr == currentStatusFilter
+            }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        ScrollableTabRow(
+            selectedTabIndex = filterOptions.indexOf(currentStatusFilter).coerceAtLeast(0),
+            containerColor = Color.White,
+            edgePadding = 16.dp,
+            divider = {}
         ) {
-            items(tasks) { task ->
-                AdminTaskItem(
-                    task = task,
-                    onEdit = { onEditClick(task) },
-                    onDelete = { onDeleteClick(task) },
-                    onViewReports = { onReportsClick(task) }
+            filterOptions.forEach { statusOption ->
+                Tab(
+                    selected = currentStatusFilter == statusOption,
+                    onClick = { currentStatusFilter = statusOption },
+                    text = {
+                        Text(
+                            text = statusOption.replace("_", " "),
+                            fontWeight = if (currentStatusFilter == statusOption) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 13.sp
+                        )
+                    },
+                    selectedContentColor = Color(0xFF800000),
+                    unselectedContentColor = Color.Gray
                 )
+            }
+        }
+
+        HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+
+        if (filteredTasks.isEmpty()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("No tasks match this status filter.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(filteredTasks) { task ->
+                    AdminTaskItem(
+                        task = task,
+                        onEdit = { onEditClick(task) },
+                        onDelete = { onDeleteClick(task) },
+                        onViewReports = { onReportsClick(task) },
+                        onViewProofs = { onProofsClick(task) }
+                    )
+                }
             }
         }
     }
 }
+
 
 @Composable
 fun AdminTaskItem(
     task: Task,
     onEdit: () -> Unit,
     onDelete: () -> Unit,
-    onViewReports: () -> Unit
+    onViewReports: () -> Unit,
+    onViewProofs: () -> Unit
 ) {
     val isAdminTask = task.requesterId == "Admin"
     val utmMaroon = Color(0xFF800000)
 
-    val rawStatusStr = task.status?.toString() ?: "PENDING"
-    val normalizedStatus = if (rawStatusStr.isBlank()) {
-        "PENDING"
-    } else {
-        rawStatusStr.uppercase(Locale.ROOT)
-    }
+    val normalizedStatus = task.status.toString().uppercase(Locale.ROOT)
 
-    val (statusBg, statusText) = when (normalizedStatus) {
-        "COMPLETED" -> Color(0xFFE8F5E9) to Color(0xFF2E7D32)
-        "CANCELLED" -> Color(0xFFFFEBEE) to Color(0xFFC62828)
-        "REMOVED" -> Color(0xFFEEEEEE) to Color(0xFF616161)
+    val (statusBg, statusText) = when (task.status) {
+        TaskStatus.COMPLETED -> Color(0xFFE8F5E9) to Color(0xFF2E7D32)
+        TaskStatus.CANCELLED -> Color(0xFFFFEBEE) to Color(0xFFC62828)
+        TaskStatus.REMOVED -> Color(0xFFEEEEEE) to Color(0xFF616161)
+        TaskStatus.ASSIGNED -> Color(0xFFE3F2FD) to Color(0xFF1565C0)
+        TaskStatus.WAITING_VERIFICATION -> Color(0xFFEDE7F6) to Color(0xFF4527A0)
         else -> Color(0xFFFFF8E1) to Color(0xFFF57F17)
     }
 
@@ -241,19 +332,10 @@ fun AdminTaskItem(
         Column {
             if (isAdminTask) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(utmMaroon)
-                        .padding(vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().background(utmMaroon).padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        "OFFICIAL ADMIN POST",
-                        color = Color.White,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.sp
-                    )
+                    Text("OFFICIAL ADMIN POST", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                 }
             }
 
@@ -263,51 +345,24 @@ fun AdminTaskItem(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = task.title,
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
-                        ),
-                        color = Color(0xFF212121),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)}",
-                        color = utmMaroon,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                        fontSize = 18.sp
-                    )
+                    Text(text = task.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), color = Color(0xFF212121), modifier = Modifier.weight(1f))
+                    Text(text = "RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)}", color = utmMaroon, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), fontSize = 18.sp)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Surface(
-                        color = statusBg,
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.padding(end = 8.dp)
-                    ) {
-                        Text(
-                            text = normalizedStatus,
-                            color = statusText,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                        )
+                    Surface(color = statusBg, shape = RoundedCornerShape(8.dp), modifier = Modifier.padding(end = 8.dp)) {
+                        Text(text = normalizedStatus.replace("_", " "), color = statusText, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp))
                     }
-
-                    val safeId = task.id ?: ""
+                    val safeId = task.id
                     val displayId = if (safeId.length >= 8) safeId.take(8).uppercase(Locale.ROOT) else safeId.uppercase(Locale.ROOT)
-                    Text(
-                        text = "Ref: $displayId...",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.Gray
-                    )
+                    Text(text = "Ref: $displayId...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
+                // SYNTAX BUG FIXED HERE (removed broken parameters configuration styling)
                 Text(
                     text = task.description,
                     style = MaterialTheme.typography.bodyMedium,
@@ -316,7 +371,17 @@ fun AdminTaskItem(
                     lineHeight = 20.sp
                 )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                // Ticket #169: Core requester/runner text trackers layout
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)).padding(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(text = "Requested By: ${task.requesterName.ifBlank { task.requesterId }}", fontSize = 12.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium)
+                    Text(text = "Assigned Runner: ${task.runnerName ?: task.runnerId ?: "None assigned yet"}", fontSize = 12.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium)
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider(color = Color(0xFFF5F5F5))
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -325,42 +390,39 @@ fun AdminTaskItem(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    TextButton(
-                        onClick = onViewReports,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("View Reports", fontWeight = FontWeight.Bold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        TextButton(onClick = onViewReports, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                            Icon(Icons.Default.Assessment, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Reports", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        TextButton(onClick = onViewProofs, contentPadding = PaddingValues(horizontal = 4.dp)) {
+                            Icon(Icons.Default.ConfirmationNumber, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text("Proofs", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                        }
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedButton(
                             onClick = onEdit,
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            border = BorderStroke(1.dp, Color.LightGray),
-                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.DarkGray)
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            border = BorderStroke(1.dp, Color.LightGray)
                         ) {
-                            Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Edit", fontSize = 13.sp)
+                            Text("Edit", fontSize = 12.sp)
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
 
                         Button(
                             onClick = onDelete,
                             shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = Color(0xFFBA1A1A),
-                                contentColor = Color.White
-                            )
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBA1A1A))
                         ) {
-                            Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Remove", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("Remove", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -368,6 +430,106 @@ fun AdminTaskItem(
         }
     }
 }
+
+
+@Composable
+fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
+    val completionBitmap = remember(task.completionProof) { decodeBase64ToImageBitmap(task.completionProof) }
+    val paymentBitmap = remember(task.paymentProof) { decodeBase64ToImageBitmap(task.paymentProof) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = {
+            Text("Task Workflow Receipts", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Section 1: Completion Proof Picture element layout window
+                Text("Completion Proof Image:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
+
+                if (completionBitmap != null) {
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Image(
+                            bitmap = completionBitmap,
+                            contentDescription = "Runner Completion Proof",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .background(Color(0xFFF5F5F5), shape = RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.PendingActions, contentDescription = null, tint = Color.Gray)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text("No completion proof uploaded yet", color = Color.Gray, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFEEEEEE))
+
+                // Section 2: Payment Status Badge layout tracking
+                Text("Payment Status & Verification:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
+
+                val (badgeBg, badgeText, statusLabel) = when (task.paymentStatus) {
+                    PaymentStatus.PAID -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "PAID") // Paid status match
+                    PaymentStatus.DISPUTED -> Triple(Color(0xFFFFEBEE), Color(0xFFC62828), "DISPUTED")
+                    PaymentStatus.PENDING -> Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), "PENDING")
+                }
+
+                Surface(color = badgeBg, shape = RoundedCornerShape(6.dp)) {
+                    Text(
+                        text = "$statusLabel (RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)})",
+                        color = badgeText,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                    )
+                }
+
+                // Render dynamic physical transaction transfer receipt image attachment if present
+                if (paymentBitmap != null) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Payment Receipt Attachment:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                    Card(
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().height(180.dp)
+                    ) {
+                        Image(
+                            bitmap = paymentBitmap,
+                            contentDescription = "User Payment Receipt",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Dismiss", fontWeight = FontWeight.Bold, color = Color(0xFF800000))
+            }
+        }
+    )
+}
+
 
 @Composable
 fun AdminReportsList(taskViewModel: TaskViewModel) {
@@ -396,10 +558,7 @@ fun AdminReportsList(taskViewModel: TaskViewModel) {
                         Text("Reporter: ${report.reporterId}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(report.description, color = Color.Black)
-
-                        val rawReportStatusStr = report.status?.toString() ?: "PENDING"
-                        val reportStatus = if (rawReportStatusStr.isBlank()) "PENDING" else rawReportStatusStr.uppercase(Locale.ROOT)
-                        Text("Status: $reportStatus", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+                        Text("Status: ${report.status?.toString()?.uppercase(Locale.ROOT) ?: "PENDING"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
                     }
                 }
             }
