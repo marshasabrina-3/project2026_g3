@@ -5,6 +5,7 @@ import android.util.Base64
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -59,10 +60,14 @@ fun AdminHomeScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
+    var showActivityReport by remember { mutableStateOf(false) } // TG-US28 state
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var taskToViewReports by remember { mutableStateOf<Task?>(null) }
     var taskToViewProofs by remember { mutableStateOf<Task?>(null) }
     var taskToDelete by remember { mutableStateOf<Task?>(null) }
+
+    val allTasksByModel by taskViewModel.allTasks.collectAsState()
+    val allReportsByModel by taskViewModel.allReports.collectAsState()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -75,6 +80,10 @@ fun AdminHomeScreen(
                     title = { Text("TaskGO Admin", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
                     actions = {
+                        // TG-US28: Generate Task Activity Report Action Button
+                        IconButton(onClick = { showActivityReport = true }) {
+                            Icon(Icons.Default.Analytics, contentDescription = "System Analytics Summary", tint = Color(0xFF800000))
+                        }
                         IconButton(onClick = onLogout) {
                             Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout", tint = Color.Gray)
                         }
@@ -166,22 +175,31 @@ fun AdminHomeScreen(
         )
     }
 
+    // TG-US24: View detailed dispute issue reports matched with specific multi-proof evidence
     if (taskToViewReports != null) {
-        val reports by taskViewModel.allReports.collectAsState()
-        val filteredReports = reports.filter { it.taskId == taskToViewReports?.id }
+        val filteredReports = allReportsByModel.filter { it.taskId == taskToViewReports?.id }
 
         AdminTaskReportsDialog(
-            taskTitle = taskToViewReports?.title ?: "",
+            task = taskToViewReports!!,
             reports = filteredReports,
             onDismiss = { taskToViewReports = null }
         )
     }
 
-    // Ticket #169: Proof view overlay trigger initialization
+    // Ticket #169: Proof verification overlay dialog matching workflow state parameters
     if (taskToViewProofs != null) {
         AdminTaskProofsDialog(
             task = taskToViewProofs!!,
             onDismiss = { taskToViewProofs = null }
+        )
+    }
+
+    // TG-US28: Show Analytical System Reports Engine View Overlay
+    if (showActivityReport) {
+        AdminActivityReportDialog(
+            tasks = allTasksByModel,
+            reports = allReportsByModel,
+            onDismiss = { showActivityReport = false }
         )
     }
 
@@ -362,7 +380,6 @@ fun AdminTaskItem(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // SYNTAX BUG FIXED HERE (removed broken parameters configuration styling)
                 Text(
                     text = task.description,
                     style = MaterialTheme.typography.bodyMedium,
@@ -371,7 +388,6 @@ fun AdminTaskItem(
                     lineHeight = 20.sp
                 )
 
-                // Ticket #169: Core requester/runner text trackers layout
                 Spacer(modifier = Modifier.height(12.dp))
                 Column(
                     modifier = Modifier.fillMaxWidth().background(Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)).padding(8.dp),
@@ -450,7 +466,6 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                // Section 1: Completion Proof Picture element layout window
                 Text("Completion Proof Image:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
 
                 if (completionBitmap != null) {
@@ -485,11 +500,10 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
 
                 HorizontalDivider(color = Color(0xFFEEEEEE))
 
-                // Section 2: Payment Status Badge layout tracking
                 Text("Payment Status & Verification:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
 
                 val (badgeBg, badgeText, statusLabel) = when (task.paymentStatus) {
-                    PaymentStatus.PAID -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "PAID") // Paid status match
+                    PaymentStatus.PAID -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "PAID")
                     PaymentStatus.DISPUTED -> Triple(Color(0xFFFFEBEE), Color(0xFFC62828), "DISPUTED")
                     PaymentStatus.PENDING -> Triple(Color(0xFFFFF8E1), Color(0xFFF57F17), "PENDING")
                 }
@@ -504,7 +518,6 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
                     )
                 }
 
-                // Render dynamic physical transaction transfer receipt image attachment if present
                 if (paymentBitmap != null) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Payment Receipt Attachment:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
@@ -566,32 +579,195 @@ fun AdminReportsList(taskViewModel: TaskViewModel) {
     }
 }
 
+
+// TG-US24: Full implementation for viewing issue reports alongside contextual task data and multi-proof evidence
 @Composable
-fun AdminTaskReportsDialog(taskTitle: String, reports: List<Report>, onDismiss: () -> Unit) {
+fun AdminTaskReportsDialog(
+    task: Task,
+    reports: List<Report>,
+    onDismiss: () -> Unit
+) {
+    val runnerCompletionBitmap = remember(task.completionProof) { decodeBase64ToImageBitmap(task.completionProof) }
+    val requesterPaymentBitmap = remember(task.paymentProof) { decodeBase64ToImageBitmap(task.paymentProof) }
+    val sortedReports = remember(reports) { reports.sortedByDescending { it.timestamp } }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color.White,
-        title = { Text("Reports for: $taskTitle", color = Color.Black, fontSize = 18.sp) },
+        modifier = Modifier.fillMaxWidth().padding(8.dp),
+        title = {
+            Column {
+                Text("Dispute & Issue Investigation", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                Text("Task Ref ID: ${task.id.take(8).uppercase(Locale.ROOT)}", fontSize = 12.sp, color = Color.Gray)
+            }
+        },
         text = {
-            if (reports.isEmpty()) {
-                Text("No reports for this task.", color = Color.Gray)
-            } else {
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(reports) { report ->
-                        Column(modifier = Modifier.fillMaxWidth()) {
-                            Text("Reporter: ${report.reporterId}", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                            Text(report.description, color = Color.Black)
-                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color.Gray.copy(alpha = 0.3f))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // Section A: Task Details Context Box
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Task: ${task.title}", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 14.sp)
+                        Text("Description: ${task.description}", fontSize = 12.sp, color = Color.DarkGray)
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFE0E0E0))
+                        Text("Requester: ${task.requesterName.ifBlank { task.requesterId }}", fontSize = 12.sp, color = Color.Black)
+                        Text("Runner: ${task.runnerName ?: task.runnerId ?: "Unassigned"}", fontSize = 12.sp, color = Color.Black)
+                    }
+                }
+
+                // Section B: List of Filed Complaints
+                Text("Filed Grievances / Complaints:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                if (sortedReports.isEmpty()) {
+                    Text("No formal logs attached to this item.", color = Color.Gray, fontSize = 12.sp)
+                } else {
+                    sortedReports.forEach { report ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFFFFBF0), shape = RoundedCornerShape(8.dp))
+                                .border(BorderStroke(1.dp, Color(0xFFFFE0B2)), shape = RoundedCornerShape(8.dp))
+                                .padding(10.dp)
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("By User: ${report.reporterId}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                                Text(text = report.status?.toString() ?: "PENDING", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFE65100))
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(text = report.description, fontSize = 12.sp, color = Color.DarkGray)
                         }
+                    }
+                }
+
+                HorizontalDivider(color = Color(0xFFEEEEEE))
+
+                // Section C: Runner Delivery Verification Evidence
+                Text("Evidence 1: Runner Completion Proof", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                if (runnerCompletionBitmap != null) {
+                    Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(140.dp)) {
+                        Image(bitmap = runnerCompletionBitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                } else {
+                    Text("⚠️ No completion image attached by runner.", fontSize = 12.sp, color = Color(0xFFBA1A1A), fontWeight = FontWeight.Medium)
+                }
+
+                // Section D: Requester Financial Verification Evidence
+                Text("Evidence 2: Requester Payment Status", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Current Payment Status:", fontSize = 12.sp, color = Color.Gray)
+                    Surface(
+                        color = if (task.paymentStatus == PaymentStatus.PAID) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = task.paymentStatus.toString(),
+                            color = if (task.paymentStatus == PaymentStatus.PAID) Color(0xFF2E7D32) else Color(0xFFC62828),
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                if (requesterPaymentBitmap != null) {
+                    Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(140.dp)) {
+                        Image(bitmap = requesterPaymentBitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                    }
+                } else {
+                    Text("⚠️ No transaction slip uploaded by requester.", fontSize = 12.sp, color = Color(0xFFBA1A1A), fontWeight = FontWeight.Medium)
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000))) {
+                Text("Close File", color = Color.White)
+            }
+        }
+    )
+}
+
+
+// TG-US28: Functional Activity Report Summary Dialog computing total data fields in structural metrics card grid
+@Composable
+fun AdminActivityReportDialog(
+    tasks: List<Task>,
+    reports: List<Report>,
+    onDismiss: () -> Unit
+) {
+    val totalPostedTasks = tasks.size
+    val completedTasksCount = tasks.count { it.status == TaskStatus.COMPLETED }
+    val cancelledTasksCount = tasks.count { it.status == TaskStatus.CANCELLED }
+    val totalReportedIssues = reports.size
+    val totalPayoutProcessed = tasks.filter { it.paymentStatus == PaymentStatus.PAID }.sumOf { it.paymentAmount }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color.White,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Analytics, contentDescription = null, tint = Color(0xFF800000))
+                Text("System Task Activity Report", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Text("Generated Summary Summary:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MetricRow(label = "Total Posted Tasks", value = totalPostedTasks.toString(), color = Color.Black)
+                    MetricRow(label = "Completed Workflows", value = completedTasksCount.toString(), color = Color(0xFF2E7D32))
+                    MetricRow(label = "Cancelled Assignments", value = cancelledTasksCount.toString(), color = Color(0xFFBA1A1A))
+                    MetricRow(label = "System Disputes/Reports Filed", value = totalReportedIssues.toString(), color = Color(0xFFF57F17))
+                }
+
+                HorizontalDivider(color = Color(0xFFEEEEEE))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF5F5F5), shape = RoundedCornerShape(8.dp))
+                        .padding(12.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Total Paid Volume:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.DarkGray)
+                        Text(
+                            text = "RM ${String.format(Locale.getDefault(), "%.2f", totalPayoutProcessed)}",
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF800000)
+                        )
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Close") }
+            TextButton(onClick = onDismiss) {
+                Text("Dismiss Report", fontWeight = FontWeight.Bold, color = Color(0xFF800000))
+            }
         }
     )
 }
+
+@Composable
+fun MetricRow(label: String, value: String, color: Color) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFFAFAFA), shape = RoundedCornerShape(6.dp))
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = label, fontSize = 13.sp, color = Color.DarkGray)
+        Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
