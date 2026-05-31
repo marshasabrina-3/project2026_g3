@@ -61,9 +61,22 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
             _isLoading.value = true
             try {
                 val document = firestore.collection("Users").document(uid).get().await()
-                val userObject = document.toObject<User>()
-                _currentUser.value = userObject
-                Log.d("AUTH_INIT", "Auto-logged in user with role: ${userObject?.role}")
+                if (document.exists()) {
+                    val userObject = try {
+                        document.toObject<User>()
+                    } catch (e: Exception) {
+                        Log.e("AUTH_INIT", "Data mapping error for user $uid", e)
+                        null
+                    }
+                    _currentUser.value = userObject
+                    if (userObject == null) {
+                        _error.value = "Your profile data is corrupted. Please contact support."
+                    }
+                    Log.d("AUTH_INIT", "Auto-logged in user with role: ${userObject?.role}")
+                } else {
+                    _error.value = "Profile not found. Please log in again."
+                    auth.signOut()
+                }
             } catch (e: Exception) {
                 _error.value = e.message
                 Log.e("AUTH_INIT", "Failed to fetch profile during auto-login", e)
@@ -83,20 +96,31 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
                 val result = auth.signInWithEmailAndPassword(email, password).await()
                 result.user?.let { firebaseUser ->
                     val document = firestore.collection("Users").document(firebaseUser.uid).get().await()
-                    val userObject = document.toObject<User>()
+                    
+                    if (document.exists()) {
+                        val userObject = try {
+                            document.toObject<User>()
+                        } catch (e: Exception) {
+                            Log.e("AUTH_ROLE", "Critical: Failed to map Firestore document to User object for UID: ${firebaseUser.uid}", e)
+                            null
+                        }
 
-                    if (userObject != null) {
-                        _currentUser.value = userObject
-                        saveToPrefs(firebaseUser.uid, email, rememberMe)
-
-                        Log.d("AUTH_ROLE", "User verified with role: ${userObject.role}")
-                        onResult(true, userObject.role)
+                        if (userObject != null) {
+                            _currentUser.value = userObject
+                            saveToPrefs(firebaseUser.uid, email, rememberMe)
+                            Log.d("AUTH_ROLE", "User verified with role: ${userObject.role}")
+                            onResult(true, userObject.role)
+                        } else {
+                            _error.value = "Technical Error: Your user profile data contains invalid formats. Please contact the administrator."
+                            onResult(false, null)
+                        }
                     } else {
-                        _error.value = "User profile configuration data not found."
+                        _error.value = "User profile not found in database. Please register again."
                         onResult(false, null)
                     }
                 }
             } catch (e: Exception) {
+                Log.e("AUTH_LOGIN", "Login failed for email: $email", e)
                 _error.value = e.message
                 onResult(false, null)
             } finally {
