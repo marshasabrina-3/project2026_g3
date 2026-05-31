@@ -34,19 +34,30 @@ import java.util.Locale
 @Composable
 fun MainContainerScreen(
     userViewModel: UserViewModel,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    initialTaskId: String? = null
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val taskViewModel: TaskViewModel = viewModel()
     val chatViewModel: ChatViewModel = viewModel()
-    
+
     val currentUser by userViewModel.currentUser.collectAsState()
     val allTasks by taskViewModel.allTasks.collectAsState()
     val activeChats by chatViewModel.activeChats.collectAsState()
-    
+
     var activeChatParams by remember { mutableStateOf<ChatParams?>(null) }
     var showInbox by remember { mutableStateOf(false) }
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
+
+    // Handle initial task navigation from deep link
+    LaunchedEffect(initialTaskId, allTasks) {
+        if (initialTaskId != null && allTasks.isNotEmpty()) {
+            val task = allTasks.find { it.id == initialTaskId }
+            if (task != null) {
+                selectedTaskForDetail = task
+            }
+        }
+    }
 
     LaunchedEffect(currentUser) {
         currentUser?.id?.let { chatViewModel.listenForInbox(it) }
@@ -58,9 +69,9 @@ fun MainContainerScreen(
         }
     }
 
-    val utmMaroon = Color(0xFF800000)
+    val utmMaroon = MaterialTheme.colorScheme.primary
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.White)) {
+    Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (selectedTaskForDetail != null) {
             val currentTask = allTasks.find { it.id == selectedTaskForDetail?.id } ?: selectedTaskForDetail!!
             TaskDetailScreen(
@@ -102,20 +113,42 @@ fun MainContainerScreen(
             )
         } else {
             Scaffold(
-                containerColor = Color.White,
+                containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
-                    Surface(tonalElevation = 12.dp, shadowElevation = 12.dp, color = Color.White) {
-                        NavigationBar(containerColor = Color.White, modifier = Modifier.height(72.dp)) {
-                            val tabs = listOf(Triple(0, Icons.Default.Home, "Home"), Triple(1, Icons.Default.AddCircle, "Post"), Triple(2, Icons.Default.Person, "Profile"))
-                            tabs.forEach { (index, icon, label) ->
-                                val selected = selectedTab == index
-                                NavigationBarItem(
-                                    selected = selected,
-                                    onClick = { selectedTab = index },
-                                    icon = { Icon(icon, label, modifier = Modifier.size(26.dp)) },
-                                    label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp) },
-                                    colors = NavigationBarItemDefaults.colors(selectedIconColor = utmMaroon, selectedTextColor = utmMaroon, indicatorColor = utmMaroon.copy(0.1f), unselectedIconColor = Color.Gray, unselectedTextColor = Color.Gray)
+                    val isAdmin = currentUser?.role == com.example.taskgo.data.model.UserRole.ADMIN
+                    val isConsoleSelected = isAdmin && selectedTab == 2
+
+                    if (!isConsoleSelected) {
+                        Surface(tonalElevation = 12.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
+                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.height(72.dp)) {
+                                val tabs = mutableListOf(
+                                    Triple(0, Icons.Default.Home, "Home"),
+                                    Triple(1, Icons.Default.AddCircle, "Post")
                                 )
+
+                                if (isAdmin) {
+                                    tabs.add(Triple(2, Icons.Default.AdminPanelSettings, "Console"))
+                                    tabs.add(Triple(3, Icons.Default.Person, "Profile"))
+                                } else {
+                                    tabs.add(Triple(2, Icons.Default.Person, "Profile"))
+                                }
+
+                                tabs.forEach { (index, icon, label) ->
+                                    val selected = selectedTab == index
+                                    NavigationBarItem(
+                                        selected = selected,
+                                        onClick = { selectedTab = index },
+                                        icon = { Icon(icon, label, modifier = Modifier.size(26.dp)) },
+                                        label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp) },
+                                        colors = NavigationBarItemDefaults.colors(
+                                            selectedIconColor = utmMaroon,
+                                            selectedTextColor = utmMaroon,
+                                            indicatorColor = utmMaroon.copy(alpha = 0.1f),
+                                            unselectedIconColor = MaterialTheme.colorScheme.outline,
+                                            unselectedTextColor = MaterialTheme.colorScheme.outline
+                                        )
+                                    )
+                                }
                             }
                         }
                     }
@@ -123,21 +156,39 @@ fun MainContainerScreen(
             ) { padding ->
                 val modifier = Modifier.padding(bottom = padding.calculateBottomPadding())
                 when (selectedTab) {
-                    0 -> MarketplaceScreen(taskViewModel, userViewModel, onChat = { tid, uid, title -> 
+                    0 -> MarketplaceScreen(taskViewModel, userViewModel, onChat = { tid, uid, title ->
                         val task = allTasks.find { it.id == tid }
                         activeChatParams = ChatParams(tid, title, uid, task?.requesterId == currentUser?.id, if (task?.requesterId == currentUser?.id) uid else currentUser?.id ?: "")
                     }, modifier = modifier)
-                    1 -> SearchPostScreen(taskViewModel, userViewModel, onChat = { tid, uid, title -> 
+                    1 -> SearchPostScreen(taskViewModel, userViewModel, onChat = { tid, uid, title ->
                         val task = allTasks.find { it.id == tid }
                         activeChatParams = ChatParams(tid, title, uid, task?.requesterId == currentUser?.id, if (task?.requesterId == currentUser?.id) uid else currentUser?.id ?: "")
                     }, modifier = modifier)
-                    2 -> ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, modifier = modifier)
+                    2 -> {
+                        if (currentUser?.role == com.example.taskgo.data.model.UserRole.ADMIN) {
+                            AdminHomeScreen(
+                                taskViewModel = taskViewModel,
+                                userViewModel = userViewModel,
+                                onLogout = onLogout,
+                                isEmbedded = true,
+                                onBack = { selectedTab = 0 }
+                            )
+                        } else {
+                            ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, modifier = modifier)
+                        }
+                    }
+                    3 -> ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, modifier = modifier)
                 }
             }
 
             if (selectedTab != 2) {
                 Box(modifier = Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 100.dp)) {
-                    FloatingActionButton(onClick = { showInbox = true }, containerColor = utmMaroon, contentColor = Color.White, shape = CircleShape) {
+                    FloatingActionButton(
+                        onClick = { showInbox = true },
+                        containerColor = utmMaroon,
+                        contentColor = Color.White,
+                        shape = CircleShape
+                    ) {
                         BadgedBox(badge = { if (totalUnreadCount > 0) Badge(containerColor = Color.Red) { Text("$totalUnreadCount") } }) {
                             Icon(Icons.AutoMirrored.Filled.Message, "Inbox")
                         }
@@ -164,22 +215,26 @@ fun MainContainerScreen(
 
 @Composable
 fun InboxOverlay(currentUserId: String, activeChats: List<ChatSummary>, taskViewModel: TaskViewModel, onChatSelect: (ChatSummary) -> Unit, onClose: () -> Unit) {
-    Surface(modifier = Modifier.fillMaxSize(), color = Color.Black.copy(0.4f)) {
+    Surface(modifier = Modifier.fillMaxSize(), color = Color.Black.copy(alpha = 0.4f)) {
         Column(modifier = Modifier.fillMaxSize()) {
             Spacer(modifier = Modifier.weight(1f).clickable { onClose() })
-            Card(modifier = Modifier.fillMaxWidth().height(550.dp), shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+            Card(
+                modifier = Modifier.fillMaxWidth().height(550.dp),
+                shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("Your Messages", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Color(0xFF800000))
-                        IconButton(onClick = onClose, modifier = Modifier.background(Color(0xFFF5F5F5), CircleShape)) { Icon(Icons.Default.Close, null) }
+                        Text("Your Messages", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        IconButton(onClick = onClose, modifier = Modifier.background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)) { Icon(Icons.Default.Close, null) }
                     }
                     if (activeChats.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No messages yet.", color = Color.Gray) }
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("No messages yet.", color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     } else {
                         LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             items(activeChats) { chat ->
                                 InboxItem(chat, currentUserId, taskViewModel, onClick = { onChatSelect(chat) })
-                                HorizontalDivider(color = Color.LightGray.copy(0.2f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
                             }
                         }
                     }
@@ -196,8 +251,8 @@ fun InboxItem(chat: ChatSummary, currentUserId: String, taskViewModel: TaskViewM
     val unreadCount = if (chat.requesterId == currentUserId) chat.unreadCountRequester else chat.unreadCountRunner
     
     Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).clickable { onClick() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Surface(modifier = Modifier.size(52.dp), shape = CircleShape, color = Color(0xFFF5F5F5)) {
-            Box(contentAlignment = Alignment.Center) { Text(otherName.take(1).uppercase(), fontWeight = FontWeight.Bold, color = Color(0xFF800000), fontSize = 20.sp) }
+        Surface(modifier = Modifier.size(52.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+            Box(contentAlignment = Alignment.Center) { Text(otherName.take(1).uppercase(), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary, fontSize = 20.sp) }
         }
         Spacer(modifier = Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
@@ -207,14 +262,15 @@ fun InboxItem(chat: ChatSummary, currentUserId: String, taskViewModel: TaskViewM
                     rating = taskViewModel.getUserRating(otherId),
                     fontSize = 15.sp,
                     fontWeight = if (unreadCount > 0) FontWeight.ExtraBold else FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.weight(1f)
                 )
                 val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(chat.timestamp))
-                Text(time, fontSize = 11.sp, color = if (unreadCount > 0) Color(0xFF800000) else Color.Gray)
+                Text(time, fontSize = 11.sp, color = if (unreadCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(chat.taskTitle, style = MaterialTheme.typography.labelSmall, color = Color(0xFF800000), fontWeight = FontWeight.Bold, maxLines = 1)
+            Text(chat.taskTitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold, maxLines = 1)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(chat.lastMessage, style = MaterialTheme.typography.bodySmall, color = if (unreadCount > 0) Color.Black else Color.Gray, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(chat.lastMessage, style = MaterialTheme.typography.bodySmall, color = if (unreadCount > 0) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (unreadCount > 0) {
                     Surface(color = Color.Red, shape = CircleShape, modifier = Modifier.size(20.dp)) {
                         Box(contentAlignment = Alignment.Center) { Text("$unreadCount", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Black) }

@@ -221,16 +221,16 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Task #195 & #198: Updates database values to suspend or ban a user
      */
-    fun modifyUserAccountStatus(userId: String, targetStatus: UserStatus, suspensionDays: Int? = null) {
+    fun modifyUserAccountStatus(userId: String, targetStatus: UserStatus, suspensionMinutes: Long? = null) {
         viewModelScope.launch {
             try {
                 val databaseUpdates = mutableMapOf<String, Any>(
                     "status" to targetStatus.name
                 )
 
-                if (targetStatus == UserStatus.SUSPENDED && suspensionDays != null) {
+                if (targetStatus == UserStatus.SUSPENDED && suspensionMinutes != null) {
                     val startTimeMillis = System.currentTimeMillis()
-                    val endTimeMillis = startTimeMillis + (suspensionDays * 24 * 60 * 60 * 1000L)
+                    val endTimeMillis = startTimeMillis + (suspensionMinutes * 60 * 1000L)
 
                     databaseUpdates["suspensionStartDate"] = startTimeMillis.toString()
                     databaseUpdates["suspensionEndDate"] = endTimeMillis.toString()

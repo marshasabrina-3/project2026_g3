@@ -1,8 +1,11 @@
 package com.example.taskgo.ui.screens
 
-import android.content.Context
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -28,6 +31,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.example.taskgo.ui.viewmodel.ChatViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
@@ -50,16 +54,25 @@ fun ChatScreen(
     val messages by chatViewModel.messages.collectAsState()
     val isUploading by chatViewModel.isUploading.collectAsState()
     val allChats by chatViewModel.activeChats.collectAsState()
-    
+
     val currentSummary = allChats.find { it.taskId == taskId && (it.runnerId == currentUser?.id || it.requesterId == currentUser?.id) }
-    
+
     var messageText by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
+
+    var showMapSelector by remember { mutableStateOf(false) }
+    var locationToShare by remember { mutableStateOf<com.google.android.gms.maps.model.LatLng?>(null) }
+    var addressToShare by remember { mutableStateOf("") }
+    var showLocationConfirmDialog by remember { mutableStateOf(false) }
+
+    var replyingTo by remember { mutableStateOf<com.example.taskgo.data.model.ChatMessage?>(null) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
 
     val isSenderRequester = currentSummary?.requesterId == currentUser?.id
 
     val imageLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { 
+        uri?.let {
             chatViewModel.uploadImage(
                 uri = it,
                 senderId = currentUser?.id ?: "",
@@ -69,12 +82,12 @@ fun ChatScreen(
                 taskId = taskId,
                 taskTitle = taskTitle,
                 isRequester = isSenderRequester
-            ) 
+            )
         }
     }
 
     val paymentProofLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        uri?.let { 
+        uri?.let {
             chatViewModel.uploadImage(
                 uri = it,
                 senderId = currentUser?.id ?: "",
@@ -85,7 +98,7 @@ fun ChatScreen(
                 taskTitle = taskTitle,
                 isRequester = isSenderRequester,
                 isPaymentProof = true
-            ) 
+            )
         }
     }
 
@@ -109,8 +122,8 @@ fun ChatScreen(
                     Column {
                         Text(text = "Chat", style = MaterialTheme.typography.titleMedium)
                         Text(
-                            text = taskTitle, 
-                            style = MaterialTheme.typography.labelSmall, 
+                            text = taskTitle,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.clickable { onNavigateToTask(taskId) }
                         )
@@ -130,7 +143,7 @@ fun ChatScreen(
                 .padding(padding)
         ) {
             if (isUploading) {
-                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = Color(0xFF800000))
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.primary)
             }
 
             LazyColumn(
@@ -142,7 +155,7 @@ fun ChatScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 item { Spacer(modifier = Modifier.height(8.dp)) }
-                
+
                 if (messages.isNotEmpty()) {
                     item {
                         TaskReferenceHeader(taskTitle = taskTitle, onClick = { onNavigateToTask(taskId) })
@@ -156,59 +169,158 @@ fun ChatScreen(
                         imageUrl = message.imageUrl,
                         timestamp = message.timestamp,
                         isMe = isMe,
-                        isPaymentProof = message.isPaymentProof
+                        isPaymentProof = message.isPaymentProof,
+                        isLocation = message.isLocation,
+                        latitude = message.latitude,
+                        longitude = message.longitude,
+                        status = message.status,
+                        replyToText = message.replyToText,
+                        onReply = { replyingTo = message },
+                        onCopy = { clipboardManager.setText(AnnotatedString(message.text)) },
+                        onOpenMap = {
+                            if (message.latitude != null && message.longitude != null) {
+                                val uri = "geo:${message.latitude},${message.longitude}?q=${message.latitude},${message.longitude}(${message.text})"
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri))
+                                context.startActivity(intent)
+                            }
+                        }
                     )
                 }
                 item { Spacer(modifier = Modifier.height(8.dp)) }
             }
 
             Surface(tonalElevation = 2.dp) {
-                Row(
-                    modifier = Modifier
-                        .padding(16.dp)
-                        .fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (isSenderRequester) {
-                        IconButton(onClick = { paymentProofLauncher.launch("image/*") }) {
-                            Icon(Icons.Default.Payments, contentDescription = "Send Payment Proof", tint = Color(0xFF43A047))
+                Column {
+                    if (replyingTo != null) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.Reply, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Replying to", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Text(replyingTo!!.text.ifBlank { "[Media]" }, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                }
+                                IconButton(onClick = { replyingTo = null }, modifier = Modifier.size(24.dp)) {
+                                    Icon(Icons.Default.Close, null, modifier = Modifier.size(16.dp))
+                                }
+                            }
                         }
                     }
-                    IconButton(onClick = { imageLauncher.launch("image/*") }) {
-                        Icon(Icons.Default.Image, contentDescription = "Send Image", tint = Color.Gray)
-                    }
-                    OutlinedTextField(
-                        value = messageText,
-                        onValueChange = { messageText = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Type a message...") },
-                        shape = RoundedCornerShape(24.dp),
-                        maxLines = 3
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    IconButton(
-                        onClick = {
-                            if (messageText.isNotBlank() && currentUser != null) {
-                                chatViewModel.sendMessage(
-                                    senderId = currentUser!!.id,
-                                    senderName = currentUser!!.name,
-                                    receiverId = otherUserId,
-                                    receiverName = if (isSenderRequester) (currentSummary?.runnerName ?: "Runner") else (currentSummary?.requesterName ?: "Requester"),
-                                    taskId = taskId,
-                                    taskTitle = taskTitle,
-                                    isSenderRequester = isSenderRequester,
-                                    text = messageText
-                                )
-                                messageText = ""
-                            }
-                        },
-                        colors = IconButtonDefaults.iconButtonColors(containerColor = Color(0xFF800000), contentColor = Color.White)
+                    Row(
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                        if (isSenderRequester) {
+                            IconButton(onClick = { paymentProofLauncher.launch("image/*") }) {
+                                Icon(Icons.Default.Payments, contentDescription = "Send Payment Proof", tint = Color(0xFF43A047))
+                            }
+                        }
+                        IconButton(onClick = { showMapSelector = true }) {
+                            Icon(Icons.Default.LocationOn, contentDescription = "Share Location", tint = Color(0xFF1976D2))
+                        }
+                        IconButton(onClick = { imageLauncher.launch("image/*") }) {
+                            Icon(Icons.Default.Image, contentDescription = "Send Image", tint = Color.Gray)
+                        }
+                        OutlinedTextField(
+                            value = messageText,
+                            onValueChange = { messageText = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("Type a message...") },
+                            shape = RoundedCornerShape(24.dp),
+                            maxLines = 3
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        IconButton(
+                            onClick = {
+                                if ((messageText.isNotBlank() || replyingTo != null) && currentUser != null) {
+                                    chatViewModel.sendMessage(
+                                        senderId = currentUser!!.id,
+                                        senderName = currentUser!!.name,
+                                        receiverId = otherUserId,
+                                        receiverName = if (isSenderRequester) (currentSummary?.runnerName ?: "Runner") else (currentSummary?.requesterName ?: "Requester"),
+                                        taskId = taskId,
+                                        taskTitle = taskTitle,
+                                        isSenderRequester = isSenderRequester,
+                                        text = messageText,
+                                        replyToId = replyingTo?.id,
+                                        replyToText = replyingTo?.text?.ifBlank { "[Media]" }
+                                    )
+                                    messageText = ""
+                                    replyingTo = null
+                                }
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.primary, contentColor = MaterialTheme.colorScheme.onPrimary)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
+                        }
                     }
                 }
             }
         }
+    }
+
+    if (showMapSelector) {
+        Dialog(onDismissRequest = { showMapSelector = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
+            Surface(modifier = Modifier.fillMaxSize()) {
+                MapSelectorScreen(
+                    onLocationSelected = { latLng, address ->
+                        locationToShare = latLng
+                        addressToShare = address
+                        showMapSelector = false
+                        showLocationConfirmDialog = true
+                    },
+                    onBack = { showMapSelector = false }
+                )
+            }
+        }
+    }
+
+    if (showLocationConfirmDialog && locationToShare != null) {
+        AlertDialog(
+            onDismissRequest = { showLocationConfirmDialog = false },
+            title = { Text("Share Location", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Confirm the address you want to share:", style = MaterialTheme.typography.bodySmall)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = addressToShare,
+                        onValueChange = { addressToShare = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Address") }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (currentUser != null) {
+                        chatViewModel.sendMessage(
+                            senderId = currentUser!!.id,
+                            senderName = currentUser!!.name,
+                            receiverId = otherUserId,
+                            receiverName = if (isSenderRequester) (currentSummary?.runnerName ?: "Runner") else (currentSummary?.requesterName ?: "Requester"),
+                            taskId = taskId,
+                            taskTitle = taskTitle,
+                            isSenderRequester = isSenderRequester,
+                            text = addressToShare,
+                            isLocation = true,
+                            latitude = locationToShare!!.latitude,
+                            longitude = locationToShare!!.longitude
+                        )
+                    }
+                    showLocationConfirmDialog = false
+                }) { Text("Share Location") }
+            },
+            dismissButton = { TextButton(onClick = { showLocationConfirmDialog = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -219,21 +331,21 @@ fun TaskReferenceHeader(taskTitle: String, onClick: () -> Unit) {
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
         shape = RoundedCornerShape(12.dp)
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.Assignment, contentDescription = null, tint = Color(0xFF800000), modifier = Modifier.size(20.dp))
+            Icon(Icons.Default.Assignment, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Spacer(modifier = Modifier.width(12.dp))
             Column {
-                Text("Discussing task:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-                Text(taskTitle, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("Discussing task:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(taskTitle, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
             }
             Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, null, tint = Color.Gray)
+            Icon(Icons.Default.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -244,10 +356,37 @@ fun ChatBubble(
     imageUrl: String?,
     timestamp: Long,
     isMe: Boolean,
-    isPaymentProof: Boolean = false
+    isPaymentProof: Boolean = false,
+    isLocation: Boolean = false,
+    latitude: Double? = null,
+    longitude: Double? = null,
+    status: com.example.taskgo.data.model.MessageStatus = com.example.taskgo.data.model.MessageStatus.SENT,
+    replyToText: String? = null,
+    onReply: () -> Unit,
+    onCopy: () -> Unit,
+    onOpenMap: () -> Unit
 ) {
-    val backgroundColor = if (isPaymentProof) Color(0xFFE8F5E9) else if (isMe) Color(0xFF800000) else Color(0xFFF0F0F0)
-    val contentColor = if (isPaymentProof) Color(0xFF2E7D32) else if (isMe) Color.White else Color.Black
+    var showOptions by remember { mutableStateOf(false) }
+
+    val backgroundColor = if (isPaymentProof) {
+        if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF1B2E1B) else Color(0xFFE8F5E9)
+    } else if (isLocation) {
+        if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF1A237E) else Color(0xFFE3F2FD)
+    } else if (isMe) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+
+    val contentColor = if (isPaymentProof) {
+        if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF81C784) else Color(0xFF2E7D32)
+    } else if (isLocation) {
+        if (androidx.compose.foundation.isSystemInDarkTheme()) Color(0xFF90CAF9) else Color(0xFF1565C0)
+    } else if (isMe) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
     val alignment = if (isMe) Alignment.End else Alignment.Start
     val shape = if (isMe) {
         RoundedCornerShape(16.dp, 16.dp, 0.dp, 16.dp)
@@ -255,13 +394,38 @@ fun ChatBubble(
         RoundedCornerShape(16.dp, 16.dp, 16.dp, 0.dp)
     }
 
-    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { _, dragAmount ->
+                    if (dragAmount > 50) onReply() // Swipe right to reply
+                }
+            },
+        horizontalAlignment = alignment
+    ) {
         Surface(
             color = backgroundColor,
             shape = shape,
-            modifier = Modifier.widthIn(max = 280.dp)
+            modifier = Modifier
+                .widthIn(max = 280.dp)
+                .clickable { showOptions = true }
         ) {
             Column(modifier = Modifier.padding(12.dp)) {
+                if (replyToText != null) {
+                    Surface(
+                        color = contentColor.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(8.dp)) {
+                            Box(modifier = Modifier.width(2.dp).fillMaxHeight().background(contentColor.copy(alpha = 0.5f)))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(replyToText, fontSize = 11.sp, color = contentColor.copy(alpha = 0.8f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+
                 if (isPaymentProof) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
                         Icon(Icons.Default.Verified, null, tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
@@ -269,6 +433,19 @@ fun ChatBubble(
                         Text("PAYMENT PROOF", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
                     }
                 }
+
+                if (isLocation) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 8.dp)) {
+                        Icon(Icons.Default.Map, null, tint = contentColor, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("LOCATION SHARED", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = contentColor)
+                        Spacer(modifier = Modifier.weight(1f))
+                        IconButton(onClick = onOpenMap, modifier = Modifier.size(24.dp)) {
+                            Icon(Icons.Default.OpenInNew, null, tint = contentColor, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+
                 if (!imageUrl.isNullOrEmpty()) {
                     val imageBytes = remember(imageUrl) { ImageUtils.decodeBase64ToByteArray(imageUrl) }
                     AsyncImage(
@@ -288,14 +465,51 @@ fun ChatBubble(
                     Spacer(modifier = Modifier.height(4.dp))
                 }
 
-                val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
-                Text(
-                    text = time,
-                    color = contentColor.copy(alpha = 0.6f),
-                    fontSize = 10.sp,
-                    modifier = Modifier.align(Alignment.End)
-                )
+                Row(
+                    modifier = Modifier.align(Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val time = SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
+                    Text(
+                        text = time,
+                        color = contentColor.copy(alpha = 0.6f),
+                        fontSize = 10.sp
+                    )
+                    if (isMe) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        val statusIcon = when (status) {
+                            com.example.taskgo.data.model.MessageStatus.SENT -> Icons.Default.Done
+                            com.example.taskgo.data.model.MessageStatus.DELIVERED -> Icons.Default.DoneAll
+                            com.example.taskgo.data.model.MessageStatus.SEEN -> Icons.Default.DoneAll
+                        }
+                        val statusTint = if (status == com.example.taskgo.data.model.MessageStatus.SEEN) Color.Cyan else contentColor.copy(alpha = 0.6f)
+                        Icon(statusIcon, null, modifier = Modifier.size(12.dp), tint = statusTint)
+                    }
+                }
             }
         }
+    }
+
+    if (showOptions) {
+        AlertDialog(
+            onDismissRequest = { showOptions = false },
+            title = { Text("Message Options", fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    ListItem(
+                        headlineContent = { Text("Reply") },
+                        leadingContent = { Icon(Icons.Default.Reply, null) },
+                        modifier = Modifier.clickable { onReply(); showOptions = false }
+                    )
+                    ListItem(
+                        headlineContent = { Text("Copy Text") },
+                        leadingContent = { Icon(Icons.Default.ContentCopy, null) },
+                        modifier = Modifier.clickable { onCopy(); showOptions = false }
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showOptions = false }) { Text("Close") } }
+        )
     }
 }

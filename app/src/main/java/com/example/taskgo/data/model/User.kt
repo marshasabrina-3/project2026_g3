@@ -20,6 +20,7 @@ data class User(
     val rating: Float = 0f,
     val reportCount: Int = 0,
     val profileImageUrl: String? = null,
+    val walletBalance: Double = 0.0,
     val suspensionStartDate: String? = null,
     val suspensionEndDate: String? = null
 )

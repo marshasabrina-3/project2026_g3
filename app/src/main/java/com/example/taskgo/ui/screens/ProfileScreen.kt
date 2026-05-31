@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -40,7 +41,10 @@ import com.example.taskgo.data.model.Review
 import com.example.taskgo.data.model.Report
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
+import com.example.taskgo.ui.viewmodel.ThemeViewModel
+import com.example.taskgo.ui.viewmodel.AppTheme
 import com.example.taskgo.util.ImageUtils
+import androidx.lifecycle.viewmodel.compose.viewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -53,16 +57,21 @@ fun ProfileScreen(
     onTaskClick: (Task) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val themeViewModel: ThemeViewModel = viewModel(
+        viewModelStoreOwner = context as androidx.activity.ComponentActivity
+    )
     val user by userViewModel.currentUser.collectAsState()
     val allTasks by taskViewModel.allTasks.collectAsState()
     val allReviews by taskViewModel.allReviews.collectAsState()
     val isLoading by userViewModel.isLoading.collectAsState()
-    
+
     var screenState by remember { mutableStateOf("MAIN") }
     var showEnlargedImage by remember { mutableStateOf(false) }
     var showEditProfileDialog by remember { mutableStateOf(false) }
     var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
     var showEditImageDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     // Reporting & Reviewing state
     var selectedTaskForAction by remember { mutableStateOf<Task?>(null) }
@@ -82,7 +91,7 @@ fun ProfileScreen(
         screenState = "MAIN"
     }
 
-    Box(modifier = modifier.fillMaxSize().background(Color(0xFFFAFAFA))) {
+    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         when (screenState) {
             "MAIN" -> {
                 ProfileMainContent(
@@ -93,7 +102,18 @@ fun ProfileScreen(
                     onNavigateToCompleted = { screenState = "COMPLETED_HISTORY" },
                     onNavigateToReportIssue = { screenState = "REPORT_ISSUE" },
                     onEnlargeImage = { showEnlargedImage = true },
-                    onEditProfile = { showEditProfileDialog = true }
+                    onEditProfile = { showEditProfileDialog = true },
+                    onSelectTheme = { showThemeDialog = true },
+                    onNavigateToAdmin = { screenState = "ADMIN_PANEL" }
+                )
+            }
+            "ADMIN_PANEL" -> {
+                AdminHomeScreen(
+                    taskViewModel = taskViewModel,
+                    userViewModel = userViewModel,
+                    onLogout = onLogout,
+                    isEmbedded = true,
+                    onBack = { screenState = "MAIN" }
                 )
             }
             "POSTED_HISTORY" -> {
@@ -102,7 +122,7 @@ fun ProfileScreen(
                     tasks = allTasks.filter { it.requesterId == user?.id },
                     reviews = allReviews,
                     onTaskClick = onTaskClick,
-                    onReviewRunner = { 
+                    onReviewRunner = {
                         selectedTaskForAction = it
                         showReviewDialog = true
                     },
@@ -179,7 +199,7 @@ fun ProfileScreen(
         EnlargedImageDialog(
             user = user,
             onDismiss = { showEnlargedImage = false },
-            onEdit = { 
+            onEdit = {
                 showEnlargedImage = false
                 photoPickerLauncher.launch("image/*")
             }
@@ -207,6 +227,17 @@ fun ProfileScreen(
             }
         )
     }
+
+    if (showThemeDialog) {
+        ThemeSelectionDialog(
+            currentTheme = themeViewModel.themeState.value,
+            onDismiss = { showThemeDialog = false },
+            onSelect = {
+                themeViewModel.setTheme(it)
+                showThemeDialog = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -218,9 +249,10 @@ fun ProfileMainContent(
     onNavigateToCompleted: () -> Unit,
     onNavigateToReportIssue: () -> Unit,
     onEnlargeImage: () -> Unit,
-    onEditProfile: () -> Unit
+    onEditProfile: () -> Unit,
+    onSelectTheme: () -> Unit,
+    onNavigateToAdmin: () -> Unit
 ) {
-    val utmMaroon = Color(0xFF800000)
     val averageRating = remember(user) { user?.id?.let { taskViewModel.getUserRating(it) } ?: 0.0 }
     val reportCount = remember(user) { user?.id?.let { taskViewModel.getUserReportCount(it) } ?: 0 }
 
@@ -233,7 +265,7 @@ fun ProfileMainContent(
                 .fillMaxWidth()
                 .height(220.dp)
                 .background(
-                    brush = Brush.verticalGradient(listOf(utmMaroon, Color(0xFFB30000))),
+                    brush = Brush.verticalGradient(listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))),
                     shape = RoundedCornerShape(bottomStart = 40.dp, bottomEnd = 40.dp)
                 ),
             contentAlignment = Alignment.Center
@@ -242,7 +274,7 @@ fun ProfileMainContent(
                 Surface(
                     modifier = Modifier.size(100.dp).clickable { onEnlargeImage() }.shadow(8.dp, CircleShape),
                     shape = CircleShape,
-                    color = Color.White
+                    color = MaterialTheme.colorScheme.surface
                 ) {
                     if (!user?.profileImageUrl.isNullOrEmpty()) {
                         val imageBytes = remember(user!!.profileImageUrl) { ImageUtils.decodeBase64ToByteArray(user.profileImageUrl) }
@@ -254,7 +286,7 @@ fun ProfileMainContent(
                         )
                     } else {
                         Box(contentAlignment = Alignment.Center) {
-                            Text(text = user?.name?.take(1) ?: "?", style = MaterialTheme.typography.displayMedium, color = utmMaroon, fontWeight = FontWeight.Bold)
+                            Text(text = user?.name?.take(1) ?: "?", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -291,22 +323,28 @@ fun ProfileMainContent(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(text = user?.name ?: "User", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = Color.Black, textAlign = TextAlign.Center)
-                    Text(text = user?.email ?: "", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
-                    Text(text = user?.phoneNumber ?: "", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                    Text(text = user?.name ?: "User", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
+                    Text(text = user?.email ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = user?.phoneNumber ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    // Wallet System removed - Income moved to history page
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            Text("Account Settings", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+            Text("Account Settings", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Spacer(modifier = Modifier.height(12.dp))
 
             ProfileMenuButton(text = "Edit Phone Number", icon = Icons.Default.Phone, onClick = onEditProfile)
+            ProfileMenuButton(text = "Appearance (Dark/Light)", icon = Icons.Default.Brightness6, onClick = onSelectTheme)
+
             ProfileMenuButton(text = "My Posted Tasks History", icon = Icons.Default.History, onClick = onNavigateToPosted)
             ProfileMenuButton(text = "Completed Tasks (Runner)", icon = Icons.Default.CheckCircle, onClick = onNavigateToCompleted)
             ProfileMenuButton(text = "Report App Issues", icon = Icons.Default.BugReport, onClick = onNavigateToReportIssue)
@@ -314,12 +352,12 @@ fun ProfileMainContent(
             Spacer(modifier = Modifier.height(32.dp))
 
             // Ratings & Reviews Section
-            Text("Ratings & Reviews", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.DarkGray)
+            Text("Ratings & Reviews", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             val reviews = taskViewModel.allReviews.collectAsState().value.filter { it.revieweeId == user?.id }
             if (reviews.isEmpty()) {
-                Text("No reviews yet.", modifier = Modifier.fillMaxWidth(), color = Color.Gray, style = MaterialTheme.typography.bodyMedium)
+                Text("No reviews yet.", modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             } else {
                 reviews.take(5).forEach { review ->
                     ReviewItem(review)
@@ -327,12 +365,16 @@ fun ProfileMainContent(
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             Button(
                 onClick = onLogout,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFEEBEC), contentColor = Color.Red)
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = if (isSystemInDarkTheme()) Color(0xFF3B1E1E) else Color(0xFFFFF1F1),
+                    contentColor = Color.Red
+                ),
+                border = if (!isSystemInDarkTheme()) BorderStroke(1.dp, Color.Red.copy(alpha = 0.2f)) else null
             ) {
                 Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
                 Spacer(modifier = Modifier.width(12.dp))
@@ -343,21 +385,26 @@ fun ProfileMainContent(
 }
 
 @Composable
-fun ProfileMenuButton(text: String, icon: androidx.compose.ui.graphics.vector.ImageVector, onClick: () -> Unit) {
+fun ProfileMenuButton(
+    text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit,
+    color: Color = MaterialTheme.colorScheme.primary
+) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp).clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(40.dp).background(Color(0xFF800000).copy(alpha = 0.05f), CircleShape), contentAlignment = Alignment.Center) {
-                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color(0xFF800000))
+            Box(modifier = Modifier.size(40.dp).background(color.copy(alpha = 0.1f), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = color)
             }
             Spacer(modifier = Modifier.width(16.dp))
-            Text(text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(text, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.LightGray)
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.outline)
         }
     }
 }
@@ -373,6 +420,8 @@ fun TaskHistoryPage(
     onReportRunner: ((Task) -> Unit)? = null,
     onBack: () -> Unit
 ) {
+    val totalIncome = remember(tasks) { tasks.filter { it.status == TaskStatus.COMPLETED }.sumOf { it.paymentAmount } }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -381,34 +430,57 @@ fun TaskHistoryPage(
             )
         }
     ) { padding ->
-        if (tasks.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(imageVector = Icons.Default.History, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
-                    Text("No history found.", color = Color.Gray)
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (title.contains("Completed", ignoreCase = true)) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column {
+                            Text("Total Income Earned", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                            Text("RM ${String.format(Locale.getDefault(), "%.2f", totalIncome)}", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                        Icon(Icons.Default.TrendingUp, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
+                    }
                 }
             }
-        } else {
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(tasks) { task ->
-                    val existingReview = reviews?.find { it.taskId == task.id && it.reviewerId != task.runnerId }
-                    
-                    if (onReviewRunner != null) {
-                        PostedTaskHistoryItem(
-                            task = task,
-                            review = existingReview,
-                            onClick = { onTaskClick(task) },
-                            onReview = { onReviewRunner(task) },
-                            onReport = { onReportRunner?.invoke(task) }
-                        )
-                    } else {
-                        val runnerReview = reviews?.find { it.taskId == task.id && it.revieweeId == task.runnerId }
-                        CompletedTaskItem(
-                            task = task, 
-                            review = runnerReview,
-                            onClick = { onTaskClick(task) }
-                        )
+
+            if (tasks.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(imageVector = Icons.Default.History, contentDescription = null, modifier = Modifier.size(64.dp), tint = Color.LightGray)
+                        Text("No history found.", color = Color.Gray)
                     }
+                }
+            } else {
+                LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    items(tasks) { task ->
+                        val existingReview = reviews?.find { it.taskId == task.id && it.reviewerId != task.runnerId }
+
+                        if (onReviewRunner != null) {
+                            PostedTaskHistoryItem(
+                                task = task,
+                                review = existingReview,
+                                onClick = { onTaskClick(task) },
+                                onReview = { onReviewRunner(task) },
+                                onReport = { onReportRunner?.invoke(task) }
+                            )
+                        } else {
+                            val runnerReview = reviews?.find { it.taskId == task.id && it.revieweeId == task.runnerId }
+                            CompletedTaskItem(
+                                task = task,
+                                review = runnerReview,
+                                onClick = { onTaskClick(task) }
+                            )
+                        }
+                    }
+                    item { Spacer(modifier = Modifier.height(16.dp)) }
                 }
             }
         }
@@ -417,7 +489,7 @@ fun TaskHistoryPage(
 
 @Composable
 fun PostedTaskHistoryItem(
-    task: Task, 
+    task: Task,
     review: Review?,
     onClick: () -> Unit,
     onReview: () -> Unit,
@@ -434,27 +506,28 @@ fun PostedTaskHistoryItem(
 
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(task.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), color = Color(0xFF800000), fontWeight = FontWeight.ExtraBold)
+                Text(task.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
             }
-            
+
             Surface(color = statusColor.copy(alpha = 0.1f), shape = RoundedCornerShape(4.dp), modifier = Modifier.padding(top = 8.dp)) {
                 Text(text = task.status.name, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
 
             if (task.status == TaskStatus.COMPLETED && task.runnerId != null) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = Color(0xFFEEEEEE))
-                
+                HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
                 Text(
                     text = "Task completed by: ${task.runnerName ?: "User"}",
                     style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
 
                 if (review != null) {
@@ -463,7 +536,7 @@ fun PostedTaskHistoryItem(
                             Icon(Icons.Default.Star, null, modifier = Modifier.size(14.dp), tint = if (i < review.rating) Color(0xFFFFB300) else Color.LightGray)
                         }
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(review.comment, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                        Text(review.comment, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 } else {
                     Row(
@@ -483,7 +556,7 @@ fun PostedTaskHistoryItem(
                             onClick = { onReview() },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000))
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                         ) {
                             Text("Write Review", fontSize = 12.sp)
                         }
@@ -498,23 +571,24 @@ fun PostedTaskHistoryItem(
 fun CompletedTaskItem(task: Task, review: Review?, onClick: () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(task.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            Text(task.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
             Spacer(modifier = Modifier.height(4.dp))
             Text("Completed", color = Color(0xFF43A047), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            
+
             review?.let {
-                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color(0xFFEEEEEE))
-                Text("Your review:", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Text("Your review:", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     repeat(5) { i ->
                         Icon(Icons.Default.Star, null, modifier = Modifier.size(12.dp), tint = if (i < it.rating) Color(0xFFFFB300) else Color.LightGray)
                     }
                 }
-                Text(it.comment, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                Text(it.comment, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
@@ -576,11 +650,44 @@ fun ReportRunnerDialog(task: Task, onDismiss: () -> Unit, onConfirm: (String) ->
 }
 
 @Composable
+fun ThemeSelectionDialog(currentTheme: AppTheme, onDismiss: () -> Unit, onSelect: (AppTheme) -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Appearance", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                AppTheme.entries.forEach { theme ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(theme) }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = theme == currentTheme, onClick = { onSelect(theme) })
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = when(theme) {
+                                AppTheme.LIGHT -> "Light Mode"
+                                AppTheme.DARK -> "Dark Mode"
+                                AppTheme.SYSTEM -> "Follow System (Default)"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+@Composable
 fun ReviewItem(review: Review) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -593,14 +700,14 @@ fun ReviewItem(review: Review) {
                     )
                 }
                 Spacer(modifier = Modifier.width(8.dp))
-                val date = remember(review.timestamp) { 
+                val date = remember(review.timestamp) {
                     SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(review.timestamp))
                 }
-                Text(date, fontSize = 10.sp, color = Color.Gray)
+                Text(date, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (review.comment.isNotBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(review.comment, style = MaterialTheme.typography.bodySmall)
+                Text(review.comment, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
             }
         }
     }
@@ -645,9 +752,9 @@ fun ReportIssuePage(taskViewModel: TaskViewModel, user: com.example.taskgo.data.
                         description = reason
                     ))
                     onBack()
-                }, 
-                modifier = Modifier.fillMaxWidth().height(56.dp), 
-                shape = RoundedCornerShape(16.dp), 
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000)),
                 enabled = reason.isNotBlank()
             ) { Text("Submit Report") }

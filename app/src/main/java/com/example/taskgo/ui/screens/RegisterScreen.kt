@@ -114,7 +114,7 @@ fun RegisterScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(
@@ -122,13 +122,21 @@ fun RegisterScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    val textFieldColors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                    )
+
                     OutlinedTextField(
                         value = studentId,
                         onValueChange = { studentId = it },
                         label = { Text("Matric No") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -138,8 +146,9 @@ fun RegisterScreen(
                         label = { Text("NRIC Number") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Fingerprint, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.Fingerprint, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                         placeholder = { Text("e.g. 000101-01-0001") },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -149,7 +158,8 @@ fun RegisterScreen(
                         label = { Text("Full Name") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -159,8 +169,9 @@ fun RegisterScreen(
                         label = { Text("UTM Email Prefix") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = utmMaroon) },
-                        suffix = { Text("@graduate.utm.my", color = Color.Gray, fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        suffix = { Text("@graduate.utm.my", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -170,7 +181,8 @@ fun RegisterScreen(
                         label = { Text("Phone Number") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -181,13 +193,14 @@ fun RegisterScreen(
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                         trailingIcon = {
                             val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(imageVector = image, contentDescription = null, tint = Color.Gray)
+                                Icon(imageVector = image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -198,13 +211,14 @@ fun RegisterScreen(
                         visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.LockClock, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.LockClock, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                         trailingIcon = {
                             val image = if (confirmPasswordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                             IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                                Icon(imageVector = image, contentDescription = null, tint = Color.Gray)
+                                Icon(imageVector = image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         },
+                        colors = textFieldColors,
                         singleLine = true
                     )
 
@@ -232,10 +246,10 @@ fun RegisterScreen(
                             .height(56.dp),
                         enabled = !isLoading,
                         shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = utmMaroon)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         if (isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
                         } else {
                             Text("REGISTER", fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 2.sp)
                         }

@@ -47,13 +47,23 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     private val _sortOption = MutableStateFlow(SortOption.LATEST)
     val sortOption = _sortOption.asStateFlow()
 
-    val filteredTasks = combine(_tasks, _searchQuery, _selectedCategory, _selectedBlock, _priceRange, _sortOption) { array ->
+    private val _selectedCampus = MutableStateFlow<String?>(null)
+    val selectedCampus = _selectedCampus.asStateFlow()
+
+    private val _selectedType = MutableStateFlow<TaskType?>(null)
+    val selectedType = _selectedType.asStateFlow()
+
+    val filteredTasks = combine(
+        _tasks, _searchQuery, _selectedCategory, _selectedBlock, _priceRange, _sortOption, _selectedCampus, _selectedType
+    ) { array ->
         val tasks = array[0] as List<Task>
         val query = array[1] as String
         val category = array[2] as TaskCategory?
         val block = array[3] as String?
         val price = array[4] as ClosedFloatingPointRange<Double>
         val sort = array[5] as SortOption
+        val campus = array[6] as String?
+        val type = array[7] as TaskType?
 
         tasks.filter { task ->
             val isLive = task.status == TaskStatus.OPEN
@@ -61,7 +71,10 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             val matchesQuery = task.title.contains(query, ignoreCase = true) || task.description.contains(query, ignoreCase = true)
             val matchesBlock = block == null || task.location.contains("Block $block", ignoreCase = true)
             val matchesPrice = if (price.endInclusive >= 100.0) task.paymentAmount >= price.start else task.paymentAmount in price
-            isLive && matchesCategory && matchesQuery && matchesBlock && matchesPrice
+            val matchesCampus = campus == null || task.campus == campus
+            val matchesType = type == null || task.type == type
+            
+            isLive && matchesCategory && matchesQuery && matchesBlock && matchesPrice && matchesCampus && matchesType
         }.let { filtered ->
             when (sort) {
                 SortOption.LATEST -> filtered.sortedByDescending { it.timestamp }
@@ -102,13 +115,25 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     fun onBlockChange(b: String?) { _selectedBlock.value = b }
     fun onPriceRangeChange(r: ClosedFloatingPointRange<Double>) { _priceRange.value = r }
     fun onSortOptionChange(s: SortOption) { _sortOption.value = s }
+    fun onCampusChange(c: String?) { _selectedCampus.value = c }
+    fun onTypeChange(t: TaskType?) { _selectedType.value = t }
+
+    fun applyAiFilters(category: TaskCategory?, campus: String?, type: TaskType?, query: String) {
+        _selectedCategory.value = category
+        _selectedCampus.value = campus
+        _selectedType.value = type
+        _searchQuery.value = query
+    }
 
     // --- TASK ACTIONS WITH NOTIFICATION LOGS ---
 
     fun addTask(
         title: String, description: String, category: TaskCategory, type: TaskType,
         campus: String, address: String, deadline: String, paymentAmount: Double,
-        requesterId: String, requesterName: String, imageUris: List<Uri> = emptyList()
+        requesterId: String, requesterName: String, imageUris: List<Uri> = emptyList(),
+        latitude: Double? = null, longitude: Double? = null,
+        destinationAddress: String? = null,
+        destinationLatitude: Double? = null, destinationLongitude: Double? = null
     ) {
         viewModelScope.launch {
             _isPosting.value = true
@@ -128,6 +153,11 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                     type = type,
                     campus = campus,
                     address = address,
+                    destinationAddress = destinationAddress,
+                    latitude = latitude,
+                    longitude = longitude,
+                    destinationLatitude = destinationLatitude,
+                    destinationLongitude = destinationLongitude,
                     deadline = deadline,
                     paymentAmount = paymentAmount,
                     status = TaskStatus.OPEN,
@@ -201,10 +231,30 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun completeTask(taskId: String) {
-        firestore.collection("Tasks").document(taskId).update(
-            "status", TaskStatus.COMPLETED,
-            "completionTimestamp", System.currentTimeMillis()
-        )
+        viewModelScope.launch {
+            try {
+                val docRef = firestore.collection("Tasks").document(taskId)
+                val taskSnapshot = docRef.get().await()
+                val task = taskSnapshot.toObject<Task>() ?: return@launch
+                
+                docRef.update(
+                    "status", TaskStatus.COMPLETED,
+                    "completionTimestamp", System.currentTimeMillis()
+                ).await()
+
+                // Update Runner's Wallet Balance (Mock)
+                task.runnerId?.let { runnerId ->
+                    val userRef = firestore.collection("Users").document(runnerId)
+                    val runner = userRef.get().await().toObject<User>()
+                    val currentBalance = runner?.walletBalance ?: 0.0
+                    userRef.update("walletBalance", currentBalance + task.paymentAmount).await()
+                }
+                
+                Toast.makeText(getApplication(), "Task verified and closed!", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "CompleteTask Error", e)
+            }
+        }
     }
 
     fun updatePaymentStatus(taskId: String, status: PaymentStatus, proofUri: Uri? = null) {
@@ -227,6 +277,28 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
     fun cancelTask(taskId: String) {
         firestore.collection("Tasks").document(taskId).update("status", TaskStatus.CANCELLED)
+    }
+
+    fun hideTaskForUser(taskId: String, userId: String) {
+        viewModelScope.launch {
+            try {
+                val docRef = firestore.collection("Tasks").document(taskId)
+                val task = docRef.get().await().toObject<Task>() ?: return@launch
+                
+                val updates = mutableMapOf<String, Any>()
+                if (task.requesterId == userId) {
+                    updates["hiddenByRequester"] = true
+                } else if (task.runnerId == userId || task.interestedRunnerIds.contains(userId)) {
+                    updates["hiddenByRunner"] = true
+                }
+                
+                if (updates.isNotEmpty()) {
+                    docRef.update(updates).await()
+                }
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "HideTask Error", e)
+            }
+        }
     }
 
     fun withdrawApplication(taskId: String, runnerId: String) {

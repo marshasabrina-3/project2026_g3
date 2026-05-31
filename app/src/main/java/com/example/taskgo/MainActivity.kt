@@ -13,12 +13,19 @@ import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.rememberNavController
 import com.example.taskgo.navigation.TaskGONavGraph
 import com.example.taskgo.ui.theme.TaskGOTheme
+import com.example.taskgo.ui.viewmodel.ThemeViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.DocumentChange
 import com.google.firebase.firestore.FirebaseFirestore
@@ -33,9 +40,17 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            TaskGOTheme {
-                val navController = rememberNavController()
-                TaskGONavGraph(navController = navController)
+            val themeViewModel: ThemeViewModel = viewModel()
+            val appTheme by themeViewModel.themeState
+            
+            TaskGOTheme(appTheme = appTheme) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val navController = rememberNavController()
+                    TaskGONavGraph(navController = navController)
+                }
             }
         }
     }
@@ -69,16 +84,17 @@ class MainActivity : ComponentActivity() {
                     if (change.type == DocumentChange.Type.ADDED) {
                         val title = change.document.getString("title") ?: "TaskGO Alert"
                         val message = change.document.getString("message") ?: ""
+                        val taskId = change.document.getString("taskId")
                         val docId = change.document.id
 
-                        showLocalNotification(title, message)
+                        showLocalNotification(title, message, taskId)
                         db.collection("Notifications").document(docId).update("isRead", true)
                     }
                 }
             }
     }
 
-    private fun showLocalNotification(title: String, message: String) {
+    private fun showLocalNotification(title: String, message: String, taskId: String? = null) {
         val channelId = "task_alerts"
         val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -87,8 +103,9 @@ class MainActivity : ComponentActivity() {
             notificationManager.createNotificationChannel(channel)
         }
 
-        // URI that points to the Main screen (where your chats usually live)
-        val deepLinkUri = Uri.parse("taskgo://main")
+        // URI that points to the Main screen with optional taskId
+        val uriStr = if (taskId != null) "taskgo://main?taskId=$taskId" else "taskgo://main"
+        val deepLinkUri = Uri.parse(uriStr)
 
         val intent = Intent(Intent.ACTION_VIEW, deepLinkUri, this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK

@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
@@ -35,6 +36,8 @@ import com.example.taskgo.data.model.TaskStatus
 import com.example.taskgo.data.model.PaymentStatus
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
+import com.example.taskgo.util.AiAgentManager
+import kotlinx.coroutines.launch
 import java.util.Locale
 
 
@@ -56,7 +59,9 @@ fun decodeBase64ToImageBitmap(base64Str: String?): ImageBitmap? {
 fun AdminHomeScreen(
     taskViewModel: TaskViewModel,
     userViewModel: UserViewModel,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    isEmbedded: Boolean = false,
+    onBack: () -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -71,21 +76,30 @@ fun AdminHomeScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color.White
+        color = MaterialTheme.colorScheme.background
     ) {
         Scaffold(
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 TopAppBar(
                     title = { Text("TaskGO Admin", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary) },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White),
+                    navigationIcon = {
+                        if (isEmbedded) {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                     actions = {
                         // TG-US28: Generate Task Activity Report Action Button
                         IconButton(onClick = { showActivityReport = true }) {
-                            Icon(Icons.Default.Analytics, contentDescription = "System Analytics Summary", tint = Color(0xFF800000))
+                            Icon(Icons.Default.Analytics, contentDescription = "System Analytics Summary", tint = MaterialTheme.colorScheme.primary)
                         }
-                        IconButton(onClick = onLogout) {
-                            Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout", tint = Color.Gray)
+                        if (!isEmbedded) {
+                            IconButton(onClick = onLogout) {
+                                Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = "Logout", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                         if (selectedTab == 0) {
                             IconButton(onClick = { showCreateDialog = true }) {
@@ -97,7 +111,7 @@ fun AdminHomeScreen(
             },
             bottomBar = {
                 NavigationBar(
-                    containerColor = Color(0xFFF5F5F5),
+                    containerColor = MaterialTheme.colorScheme.surface,
                     contentColor = MaterialTheme.colorScheme.primary
                 ) {
                     NavigationBarItem(
@@ -129,11 +143,11 @@ fun AdminHomeScreen(
                             onEditClick = { taskToEdit = it },
                             onDeleteClick = { taskToDelete = it },
                             onReportsClick = { taskToViewReports = it },
-                            onProofsClick = { taskToViewProofs = it }
+                            onViewProofs = { taskToViewProofs = it }
                         )
                     }
                     1 -> {
-                        AdminReportsList(taskViewModel = taskViewModel)
+                        AdminReportsList(taskViewModel = taskViewModel, userViewModel = userViewModel)
                     }
                     2 -> {
                         AdminUserManagementScreen(userViewModel = userViewModel)
@@ -206,12 +220,12 @@ fun AdminHomeScreen(
     if (taskToDelete != null) {
         AlertDialog(
             onDismissRequest = { taskToDelete = null },
-            containerColor = Color.White,
-            title = { Text(text = "Confirm Task Removal", fontWeight = FontWeight.Bold, color = Color.Black) },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text(text = "Confirm Task Removal", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
             text = {
                 Text(
                     text = "Are you sure you want to permanently delete \"${taskToDelete!!.title}\"? This will flag its status as removed and hide it across all student streams.",
-                    color = Color.DarkGray
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             },
             confirmButton = {
@@ -222,8 +236,8 @@ fun AdminHomeScreen(
                         taskToDelete = null
                     },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFFBA1A1A),
-                        contentColor = Color.White
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
                     )
                 ) {
                     Text("Remove Task")
@@ -231,7 +245,7 @@ fun AdminHomeScreen(
             },
             dismissButton = {
                 TextButton(onClick = { taskToDelete = null }) {
-                    Text("Cancel", color = Color.Gray)
+                    Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         )
@@ -245,28 +259,69 @@ fun AdminTasksList(
     onEditClick: (Task) -> Unit,
     onDeleteClick: (Task) -> Unit,
     onReportsClick: (Task) -> Unit,
-    onProofsClick: (Task) -> Unit
+    onViewProofs: (Task) -> Unit
 ) {
     val tasks by taskViewModel.allTasks.collectAsState()
-
+    var searchQuery by remember { mutableStateOf("") }
     var currentStatusFilter by remember { mutableStateOf("ALL") }
     val filterOptions = listOf("ALL", "OPEN", "PENDING_APPROVAL", "ASSIGNED", "WAITING_VERIFICATION", "COMPLETED", "CANCELLED", "REMOVED")
 
-    val filteredTasks = remember(tasks, currentStatusFilter) {
-        if (currentStatusFilter == "ALL") {
-            tasks
-        } else {
-            tasks.filter { task ->
-                val statusStr = task.status.toString().uppercase(Locale.ROOT)
-                statusStr == currentStatusFilter
-            }
+    val filteredTasks = remember(tasks, currentStatusFilter, searchQuery) {
+        tasks.filter { task ->
+            val matchesStatus = if (currentStatusFilter == "ALL") true
+                               else task.status.toString().uppercase(Locale.ROOT) == currentStatusFilter
+            val matchesSearch = task.title.contains(searchQuery, ignoreCase = true) ||
+                               task.id.contains(searchQuery, ignoreCase = true) ||
+                               task.requesterName.contains(searchQuery, ignoreCase = true)
+            matchesStatus && matchesSearch
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        // Search & Filter Bar
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search tasks...") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    singleLine = true
+                )
+
+                var showFilterMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { showFilterMenu = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                    }
+                    DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
+                        filterOptions.forEach { status ->
+                            DropdownMenuItem(
+                                text = { Text(status.replace("_", " ")) },
+                                onClick = {
+                                    currentStatusFilter = status
+                                    showFilterMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         ScrollableTabRow(
             selectedTabIndex = filterOptions.indexOf(currentStatusFilter).coerceAtLeast(0),
-            containerColor = Color.White,
+            containerColor = MaterialTheme.colorScheme.surface,
             edgePadding = 16.dp,
             divider = {}
         ) {
@@ -281,17 +336,17 @@ fun AdminTasksList(
                             fontSize = 13.sp
                         )
                     },
-                    selectedContentColor = Color(0xFF800000),
-                    unselectedContentColor = Color.Gray
+                    selectedContentColor = MaterialTheme.colorScheme.primary,
+                    unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        HorizontalDivider(color = Color(0xFFEEEEEE), thickness = 1.dp)
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), thickness = 1.dp)
 
         if (filteredTasks.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text("No tasks match this status filter.", color = Color.Gray)
+                Text("No tasks found.", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         } else {
             LazyColumn(
@@ -307,7 +362,7 @@ fun AdminTasksList(
                         onEdit = { onEditClick(task) },
                         onDelete = { onDeleteClick(task) },
                         onViewReports = { onReportsClick(task) },
-                        onViewProofs = { onProofsClick(task) }
+                        onViewProofs = { onViewProofs(task) }
                     )
                 }
             }
@@ -342,18 +397,18 @@ fun AdminTaskItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFFFAFAFA)),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = if (isAdminTask) BorderStroke(1.5.dp, utmMaroon) else BorderStroke(1.dp, Color(0xFFEEEEEE))
+        border = if (isAdminTask) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column {
             if (isAdminTask) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().background(utmMaroon).padding(vertical = 6.dp),
+                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.primary).padding(vertical = 6.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("OFFICIAL ADMIN POST", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
+                    Text("OFFICIAL ADMIN POST", color = MaterialTheme.colorScheme.onPrimary, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp)
                 }
             }
 
@@ -363,8 +418,8 @@ fun AdminTaskItem(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = task.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), color = Color(0xFF212121), modifier = Modifier.weight(1f))
-                    Text(text = "RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)}", color = utmMaroon, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), fontSize = 18.sp)
+                    Text(text = task.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold, fontSize = 18.sp), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    Text(text = "RM ${String.format(Locale.getDefault(), "%.2f", task.paymentAmount)}", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold), fontSize = 18.sp)
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
@@ -375,7 +430,7 @@ fun AdminTaskItem(
                     }
                     val safeId = task.id
                     val displayId = if (safeId.length >= 8) safeId.take(8).uppercase(Locale.ROOT) else safeId.uppercase(Locale.ROOT)
-                    Text(text = "Ref: $displayId...", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                    Text(text = "Ref: $displayId...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -383,18 +438,18 @@ fun AdminTaskItem(
                 Text(
                     text = task.description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = Color(0xFF616161),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 3,
                     lineHeight = 20.sp
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Column(
-                    modifier = Modifier.fillMaxWidth().background(Color(0xFFF0F0F0), shape = RoundedCornerShape(8.dp)).padding(8.dp),
+                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)).padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(text = "Requested By: ${task.requesterName.ifBlank { task.requesterId }}", fontSize = 12.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium)
-                    Text(text = "Assigned Runner: ${task.runnerName ?: task.runnerId ?: "None assigned yet"}", fontSize = 12.sp, color = Color.DarkGray, fontWeight = FontWeight.Medium)
+                    Text(text = "Requested By: ${task.requesterName.ifBlank { task.requesterId }}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
+                    Text(text = "Assigned Runner: ${task.runnerName ?: task.runnerId ?: "None assigned yet"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Medium)
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -455,9 +510,9 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         title = {
-            Text("Task Workflow Receipts", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+            Text("Task Workflow Receipts", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
         },
         text = {
             Column(
@@ -466,7 +521,7 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("Completion Proof Image:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
+                Text("Completion Proof Image:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
 
                 if (completionBitmap != null) {
                     Card(
@@ -487,20 +542,20 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(120.dp)
-                            .background(Color(0xFFF5F5F5), shape = RoundedCornerShape(8.dp)),
+                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = RoundedCornerShape(8.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.PendingActions, contentDescription = null, tint = Color.Gray)
+                            Icon(Icons.Default.PendingActions, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text("No completion proof uploaded yet", color = Color.Gray, fontSize = 12.sp)
+                            Text("No completion proof uploaded yet", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                         }
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFEEEEEE))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                Text("Payment Status & Verification:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Black)
+                Text("Payment Status & Verification:", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface)
 
                 val (badgeBg, badgeText, statusLabel) = when (task.paymentStatus) {
                     PaymentStatus.PAID -> Triple(Color(0xFFE8F5E9), Color(0xFF2E7D32), "PAID")
@@ -520,7 +575,7 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
 
                 if (paymentBitmap != null) {
                     Spacer(modifier = Modifier.height(4.dp))
-                    Text("Payment Receipt Attachment:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                    Text("Payment Receipt Attachment:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
                     Card(
                         shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth().height(180.dp)
@@ -537,7 +592,7 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Dismiss", fontWeight = FontWeight.Bold, color = Color(0xFF800000))
+                Text("Dismiss", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
     )
@@ -545,33 +600,136 @@ fun AdminTaskProofsDialog(task: Task, onDismiss: () -> Unit) {
 
 
 @Composable
-fun AdminReportsList(taskViewModel: TaskViewModel) {
+fun AdminReportsList(taskViewModel: TaskViewModel, userViewModel: UserViewModel) {
     val reports by taskViewModel.allReports.collectAsState()
+    val allUsers by userViewModel.allUsers.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+    var currentStatusFilter by remember { mutableStateOf("ALL") }
+    val filterOptions = listOf("ALL", "PENDING", "RESOLVED", "ACTION_TAKEN")
 
-    if (reports.isEmpty()) {
-        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Default.Report, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("No reports filed yet.", color = Color.Gray)
+    val filteredReports = remember(reports, currentStatusFilter, searchQuery, allUsers) {
+        reports.filter { report ->
+            val matchesStatus = if (currentStatusFilter == "ALL") true
+                               else report.status?.toString()?.uppercase(Locale.ROOT) == currentStatusFilter
+
+            val reporterName = allUsers.find { it.id == report.reporterId }?.name ?: ""
+            val matchesSearch = report.description.contains(searchQuery, ignoreCase = true) ||
+                               (report.taskId?.contains(searchQuery, ignoreCase = true) ?: false) ||
+                               report.reporterId.contains(searchQuery, ignoreCase = true) ||
+                               reporterName.contains(searchQuery, ignoreCase = true) ||
+                               report.reason.contains(searchQuery, ignoreCase = true)
+            matchesStatus && matchesSearch
+        }.sortedByDescending { it.timestamp }
+    }
+
+    Column(modifier = Modifier.fillMaxSize()) {
+        // Search & Filter Bar
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("Search reports...") },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(12.dp),
+                    leadingIcon = { Icon(Icons.Default.Search, null) },
+                    singleLine = true
+                )
+
+                var showFilterMenu by remember { mutableStateOf(false) }
+                Box {
+                    IconButton(onClick = { showFilterMenu = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Filter")
+                    }
+                    DropdownMenu(expanded = showFilterMenu, onDismissRequest = { showFilterMenu = false }) {
+                        filterOptions.forEach { status ->
+                            DropdownMenuItem(
+                                text = { Text(status.replace("_", " ")) },
+                                onClick = {
+                                    currentStatusFilter = status
+                                    showFilterMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
             }
         }
-    } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(reports) { report ->
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text("Task ID: ${report.taskId}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                        Text("Reporter: ${report.reporterId}", style = MaterialTheme.typography.bodySmall, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(report.description, color = Color.Black)
-                        Text("Status: ${report.status?.toString()?.uppercase(Locale.ROOT) ?: "PENDING"}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.secondary)
+
+        if (filteredReports.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.Report, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(64.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("No reports found.", color = Color.Gray)
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(filteredReports) { report ->
+                    val reporterName = allUsers.find { it.id == report.reporterId }?.name ?: "Unknown User"
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    text = if (report.taskId != null) "Task ID: ${report.taskId}" else "System/App Issue",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 12.sp
+                                )
+                                val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault()).format(java.util.Date(report.timestamp))
+                                Text(date, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+
+                            Text("Reporter: $reporterName", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
+                            Text("ID: ${report.reporterId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = report.reason.uppercase(),
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(report.description, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "Status: ${report.status?.toString()?.uppercase(Locale.ROOT) ?: "PENDING"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -591,14 +749,31 @@ fun AdminTaskReportsDialog(
     val requesterPaymentBitmap = remember(task.paymentProof) { decodeBase64ToImageBitmap(task.paymentProof) }
     val sortedReports = remember(reports) { reports.sortedByDescending { it.timestamp } }
 
+    val scope = rememberCoroutineScope()
+    var arbitrationSummary by remember { mutableStateOf<String?>(null) }
+    var isAnalyzing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(task.id) {
+        if (task.paymentStatus == PaymentStatus.DISPUTED) {
+            isAnalyzing = true
+            val transcript = reports.joinToString("\n") { "${it.reporterId}: ${it.description}" }
+            arbitrationSummary = AiAgentManager.generateDisputeArbitration(
+                task.title,
+                task.description,
+                transcript
+            )
+            isAnalyzing = false
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         title = {
             Column {
-                Text("Dispute & Issue Investigation", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
-                Text("Task Ref ID: ${task.id.take(8).uppercase(Locale.ROOT)}", fontSize = 12.sp, color = Color.Gray)
+                Text("Dispute & Issue Investigation", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
+                Text("Task Ref ID: ${task.id.take(8).uppercase(Locale.ROOT)}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         },
         text = {
@@ -610,58 +785,86 @@ fun AdminTaskReportsDialog(
             ) {
                 // Section A: Task Details Context Box
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
                     shape = RoundedCornerShape(8.dp),
-                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Task: ${task.title}", fontWeight = FontWeight.Bold, color = Color.Black, fontSize = 14.sp)
-                        Text("Description: ${task.description}", fontSize = 12.sp, color = Color.DarkGray)
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = Color(0xFFE0E0E0))
-                        Text("Requester: ${task.requesterName.ifBlank { task.requesterId }}", fontSize = 12.sp, color = Color.Black)
-                        Text("Runner: ${task.runnerName ?: task.runnerId ?: "Unassigned"}", fontSize = 12.sp, color = Color.Black)
+                        Text("Task: ${task.title}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                        Text("Description: ${task.description}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                        Text("Requester: ${task.requesterName.ifBlank { task.requesterId }}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Runner: ${task.runnerName ?: task.runnerId ?: "Unassigned"}", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+
+                // AI Arbitration Section
+                if (task.paymentStatus == PaymentStatus.DISPUTED) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Magic Arbitration Summary", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.primary)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            if (isAnalyzing) {
+                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            } else {
+                                Text(
+                                    text = arbitrationSummary ?: "No analysis available.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    lineHeight = 18.sp
+                                )
+                            }
+                        }
                     }
                 }
 
                 // Section B: List of Filed Complaints
-                Text("Filed Grievances / Complaints:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                Text("Filed Grievances / Complaints:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 if (sortedReports.isEmpty()) {
-                    Text("No formal logs attached to this item.", color = Color.Gray, fontSize = 12.sp)
+                    Text("No formal logs attached to this item.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
                 } else {
                     sortedReports.forEach { report ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(Color(0xFFFFFBF0), shape = RoundedCornerShape(8.dp))
-                                .border(BorderStroke(1.dp, Color(0xFFFFE0B2)), shape = RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f), shape = RoundedCornerShape(8.dp))
+                                .border(BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f)), shape = RoundedCornerShape(8.dp))
                                 .padding(10.dp)
                         ) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text("By User: ${report.reporterId}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
-                                Text(text = report.status?.toString() ?: "PENDING", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFFE65100))
+                                Text("By User: ${report.reporterId}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                Text(text = report.status?.toString() ?: "PENDING", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.error)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(text = report.description, fontSize = 12.sp, color = Color.DarkGray)
+                            Text(text = report.description, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 }
 
-                HorizontalDivider(color = Color(0xFFEEEEEE))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 // Section C: Runner Delivery Verification Evidence
-                Text("Evidence 1: Runner Completion Proof", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                Text("Evidence 1: Runner Completion Proof", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 if (runnerCompletionBitmap != null) {
                     Card(shape = RoundedCornerShape(8.dp), modifier = Modifier.fillMaxWidth().height(140.dp)) {
                         Image(bitmap = runnerCompletionBitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     }
                 } else {
-                    Text("⚠️ No completion image attached by runner.", fontSize = 12.sp, color = Color(0xFFBA1A1A), fontWeight = FontWeight.Medium)
+                    Text("⚠️ No completion image attached by runner.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
                 }
 
                 // Section D: Requester Financial Verification Evidence
-                Text("Evidence 2: Requester Payment Status", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.Black)
+                Text("Evidence 2: Requester Payment Status", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Current Payment Status:", fontSize = 12.sp, color = Color.Gray)
+                    Text("Current Payment Status:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Surface(
                         color = if (task.paymentStatus == PaymentStatus.PAID) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
                         shape = RoundedCornerShape(4.dp)
@@ -678,13 +881,13 @@ fun AdminTaskReportsDialog(
                         Image(bitmap = requesterPaymentBitmap, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                     }
                 } else {
-                    Text("⚠️ No transaction slip uploaded by requester.", fontSize = 12.sp, color = Color(0xFFBA1A1A), fontWeight = FontWeight.Medium)
+                    Text("⚠️ No transaction slip uploaded by requester.", fontSize = 12.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
                 }
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000))) {
-                Text("Close File", color = Color.White)
+            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)) {
+                Text("Close File", color = MaterialTheme.colorScheme.onPrimary)
             }
         }
     )
@@ -706,11 +909,11 @@ fun AdminActivityReportDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.surface,
         title = {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(Icons.Default.Analytics, contentDescription = null, tint = Color(0xFF800000))
-                Text("System Task Activity Report", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.Black)
+                Icon(Icons.Default.Analytics, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                Text("System Task Activity Report", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = MaterialTheme.colorScheme.onSurface)
             }
         },
         text = {
@@ -718,28 +921,28 @@ fun AdminActivityReportDialog(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Text("Generated Summary Summary:", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+                Text("Generated Summary Summary:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
 
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MetricRow(label = "Total Posted Tasks", value = totalPostedTasks.toString(), color = Color.Black)
+                    MetricRow(label = "Total Posted Tasks", value = totalPostedTasks.toString(), color = MaterialTheme.colorScheme.onSurface)
                     MetricRow(label = "Completed Workflows", value = completedTasksCount.toString(), color = Color(0xFF2E7D32))
-                    MetricRow(label = "Cancelled Assignments", value = cancelledTasksCount.toString(), color = Color(0xFFBA1A1A))
+                    MetricRow(label = "Cancelled Assignments", value = cancelledTasksCount.toString(), color = MaterialTheme.colorScheme.error)
                     MetricRow(label = "System Disputes/Reports Filed", value = totalReportedIssues.toString(), color = Color(0xFFF57F17))
                 }
 
-                HorizontalDivider(color = Color(0xFFEEEEEE))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(Color(0xFFF5F5F5), shape = RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), shape = RoundedCornerShape(8.dp))
                         .padding(12.dp)
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Total Paid Volume:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.DarkGray)
+                        Text("Total Paid Volume:", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
                             text = "RM ${String.format(Locale.getDefault(), "%.2f", totalPayoutProcessed)}",
-                            fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color(0xFF800000)
+                            fontWeight = FontWeight.Bold, fontSize = 14.sp, color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -747,7 +950,7 @@ fun AdminActivityReportDialog(
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("Dismiss Report", fontWeight = FontWeight.Bold, color = Color(0xFF800000))
+                Text("Dismiss Report", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
             }
         }
     )
@@ -758,12 +961,12 @@ fun MetricRow(label: String, value: String, color: Color) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFFAFAFA), shape = RoundedCornerShape(6.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), shape = RoundedCornerShape(6.dp))
             .padding(horizontal = 10.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = label, fontSize = 13.sp, color = Color.DarkGray)
+        Text(text = label, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(text = value, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = color)
     }
 }
@@ -778,8 +981,8 @@ fun AdminCreateTaskDialog(onDismiss: () -> Unit, onConfirm: (String, String, Str
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
-        title = { Text("New Admin Task", color = Color.Black) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text("New Admin Task", color = MaterialTheme.colorScheme.onSurface) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") })
@@ -791,7 +994,7 @@ fun AdminCreateTaskDialog(onDismiss: () -> Unit, onConfirm: (String, String, Str
             Button(onClick = { onConfirm(title, desc, amount) }) { Text("Post as Admin") }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     )
 }
@@ -805,8 +1008,8 @@ fun AdminEditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Uni
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
-        title = { Text("Edit Task Details", color = Color.Black) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text("Edit Task Details", color = MaterialTheme.colorScheme.onSurface) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") })
@@ -822,7 +1025,7 @@ fun AdminEditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Uni
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     )
 }

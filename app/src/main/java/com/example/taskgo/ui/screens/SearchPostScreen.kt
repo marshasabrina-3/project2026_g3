@@ -39,6 +39,8 @@ import coil.compose.AsyncImage
 import com.example.taskgo.data.model.*
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
+import com.example.taskgo.util.AiAgentManager
+import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 import java.util.Calendar
 import java.util.Date
@@ -53,18 +55,21 @@ fun SearchPostScreen(
     modifier: Modifier = Modifier
 ) {
     var screenState by remember { mutableStateOf("MAIN") }
+    var previousScreenState by remember { mutableStateOf("MAIN") }
     val user by userViewModel.currentUser.collectAsState()
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
+    var selectedLocation by remember { mutableStateOf<com.google.android.gms.maps.model.LatLng?>(null) }
+    var selectedAddressStr by remember { mutableStateOf<String?>(null) }
     val isPosting by taskViewModel.isPosting.collectAsState()
 
-    val utmMaroon = Color(0xFF800000)
+    val utmMaroon = MaterialTheme.colorScheme.primary
 
-    Box(modifier = modifier.fillMaxSize().background(Color(0xFFFAFAFA))) {
+    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         if (selectedTaskForDetail != null) {
             val allTasks by taskViewModel.allTasks.collectAsState()
             val currentTask = allTasks.find { it.id == selectedTaskForDetail?.id } ?: selectedTaskForDetail!!
-            
+
             BackHandler { selectedTaskForDetail = null }
             TaskDetailScreen(
                 task = currentTask,
@@ -86,6 +91,18 @@ fun SearchPostScreen(
                     screenState = "EDIT"
                 }
             )
+        } else if (screenState == "MAP") {
+            MapSelectorScreen(
+                initialLocation = if (selectedLocation != null) selectedLocation!!
+                                 else if (taskToEdit?.latitude != null) com.google.android.gms.maps.model.LatLng(taskToEdit!!.latitude!!, taskToEdit!!.longitude!!)
+                                 else com.google.android.gms.maps.model.LatLng(3.1718, 101.7145),
+                onLocationSelected = { latLng, address ->
+                    selectedLocation = latLng
+                    selectedAddressStr = address
+                    screenState = previousScreenState
+                },
+                onBack = { screenState = previousScreenState }
+            )
         } else if (screenState == "MAIN") {
             PostMainScreen(
                 taskViewModel = taskViewModel,
@@ -95,18 +112,26 @@ fun SearchPostScreen(
                 onTaskClick = { selectedTaskForDetail = it }
             )
         } else {
-            BackHandler { 
+            BackHandler {
                 screenState = "MAIN"
                 taskToEdit = null
             }
             CreateTaskScreen(
                 type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else if (screenState == "CREATE_SERVICE") TaskType.SERVICE else taskToEdit?.type ?: TaskType.REQUEST,
                 taskToEdit = taskToEdit,
-                onBack = { 
+                initialLatLng = selectedLocation,
+                initialAddress = selectedAddressStr,
+                onOpenMap = {
+                    previousScreenState = screenState
+                    screenState = "MAP"
+                },
+                onBack = {
                     screenState = "MAIN"
                     taskToEdit = null
+                    selectedLocation = null
+                    selectedAddressStr = null
                 },
-                onConfirm = { title, desc, cat, campus, addr, dead, amt, images ->
+                onConfirm = { title, desc, cat, campus, addr, dead, amt, images, lat, lng, destAddr, destLat, destLng ->
                     if (screenState == "EDIT" && taskToEdit != null) {
                         taskViewModel.updateTask(taskToEdit!!.copy(
                             title = title,
@@ -114,8 +139,13 @@ fun SearchPostScreen(
                             category = cat,
                             campus = campus,
                             address = addr,
+                            destinationAddress = destAddr,
                             deadline = dead,
-                            paymentAmount = amt ?: 0.0
+                            paymentAmount = amt ?: 0.0,
+                            latitude = lat,
+                            longitude = lng,
+                            destinationLatitude = destLat,
+                            destinationLongitude = destLng
                         ))
                     } else {
                         taskViewModel.addTask(
@@ -125,15 +155,22 @@ fun SearchPostScreen(
                             type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else TaskType.SERVICE,
                             campus = campus,
                             address = addr,
+                            destinationAddress = destAddr,
                             deadline = dead,
                             paymentAmount = amt ?: 0.0,
                             requesterId = user?.id ?: "unknown",
                             requesterName = user?.name ?: "Unknown",
-                            imageUris = images
+                            imageUris = images,
+                            latitude = lat,
+                            longitude = lng,
+                            destinationLatitude = destLat,
+                            destinationLongitude = destLng
                         )
                     }
                     screenState = "MAIN"
                     taskToEdit = null
+                    selectedLocation = null
+                    selectedAddressStr = null
                 }
             )
         }
@@ -147,7 +184,7 @@ fun SearchPostScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     shape = RoundedCornerShape(24.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
                 ) {
@@ -157,8 +194,8 @@ fun SearchPostScreen(
                     ) {
                         CircularProgressIndicator(color = utmMaroon, strokeWidth = 4.dp)
                         Spacer(modifier = Modifier.height(20.dp))
-                        Text("Creating Task...", fontWeight = FontWeight.Bold, color = Color.Black)
-                        Text("Uploading images to cloud", fontSize = 12.sp, color = Color.Gray)
+                        Text("Creating Task...", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                        Text("Uploading images to cloud", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -175,7 +212,7 @@ fun PostMainScreen(
     onTaskClick: (Task) -> Unit
 ) {
     val allTasks by taskViewModel.allTasks.collectAsState()
-    
+
     // Controlled expansion states
     var requestsExpanded by remember { mutableStateOf(true) }
     var servicesExpanded by remember { mutableStateOf(true) }
@@ -317,15 +354,23 @@ fun PostMainScreen(
             // My Live Posts
             item { SectionLabel("My Live Posts") }
             item {
-                val myRequests = allTasks.filter { it.requesterId == user?.id && it.type == TaskType.REQUEST && it.status != TaskStatus.COMPLETED && it.status != TaskStatus.CANCELLED }
+                val myRequests = allTasks.filter {
+                    it.requesterId == user?.id &&
+                    it.type == TaskType.REQUEST &&
+                    it.status != TaskStatus.COMPLETED &&
+                    it.status != TaskStatus.CANCELLED &&
+                    !it.hiddenByRequester &&
+                    !it.cancelledByAdmin
+                }
                 ExpandableListSection("Requested Tasks", myRequests.size, requestsExpanded, { requestsExpanded = !requestsExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (myRequests.isEmpty()) EmptyHistoryItem("No live requests.")
                         else myRequests.forEach { task ->
                             CompactHistoryItem(
-                                task, 
-                                { onTaskClick(task) }, 
+                                task,
+                                { onTaskClick(task) },
                                 onCancel = if (task.status == TaskStatus.OPEN) { { taskToCancel = task } } else null,
+                                onHide = { taskViewModel.hideTaskForUser(task.id, user?.id ?: "") },
                                 onAction = if (task.status == TaskStatus.WAITING_VERIFICATION) { {
                                     taskViewModel.completeTask(task.id)
                                     showReviewDialogForTask = task
@@ -337,15 +382,23 @@ fun PostMainScreen(
                 }
             }
             item {
-                val myServices = allTasks.filter { it.requesterId == user?.id && it.type == TaskType.SERVICE && it.status != TaskStatus.COMPLETED && it.status != TaskStatus.CANCELLED }
+                val myServices = allTasks.filter {
+                    it.requesterId == user?.id &&
+                    it.type == TaskType.SERVICE &&
+                    it.status != TaskStatus.COMPLETED &&
+                    it.status != TaskStatus.CANCELLED &&
+                    !it.hiddenByRequester &&
+                    !it.cancelledByAdmin
+                }
                 ExpandableListSection("Service Offers", myServices.size, servicesExpanded, { servicesExpanded = !servicesExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (myServices.isEmpty()) EmptyHistoryItem("No live services.")
                         else myServices.forEach { task ->
                             CompactHistoryItem(
-                                task, 
-                                { onTaskClick(task) }, 
+                                task,
+                                { onTaskClick(task) },
                                 onCancel = if (task.status == TaskStatus.OPEN) { { taskToCancel = task } } else null,
+                                onHide = { taskViewModel.hideTaskForUser(task.id, user?.id ?: "") },
                                 onAction = if (task.status == TaskStatus.WAITING_VERIFICATION) { {
                                     taskViewModel.completeTask(task.id)
                                     showReviewDialogForTask = task
@@ -362,7 +415,13 @@ fun PostMainScreen(
             // Applications Sent
             item { SectionLabel("Applications Sent") }
             item {
-                val appliedRequests = allTasks.filter { (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) && it.type == TaskType.REQUEST && it.status != TaskStatus.CANCELLED }
+                val appliedRequests = allTasks.filter {
+                    (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) &&
+                    it.type == TaskType.REQUEST &&
+                    it.status != TaskStatus.CANCELLED &&
+                    !it.hiddenByRunner &&
+                    !it.cancelledByAdmin
+                }
                 ExpandableListSection("Applications (Requests)", appliedRequests.size, applicationsRequestExpanded, { applicationsRequestExpanded = !applicationsRequestExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (appliedRequests.isEmpty()) EmptyHistoryItem("No applications sent for requests.")
@@ -371,10 +430,11 @@ fun PostMainScreen(
                             val isRejected = task.runnerId != null && task.runnerId != user?.id
                             val isPending = !isChosen && !isRejected
                             CompactHistoryItem(
-                                task, 
-                                { onTaskClick(task) }, 
+                                task,
+                                { onTaskClick(task) },
                                 if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING",
                                 onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null,
+                                onHide = { taskViewModel.hideTaskForUser(task.id, user?.id ?: "") },
                                 onAction = if (isChosen && task.status == TaskStatus.ASSIGNED) { { taskToMarkFinished = task } } else null,
                                 actionLabel = if (isChosen && task.status == TaskStatus.ASSIGNED) "Finish" else null
                             )
@@ -383,7 +443,13 @@ fun PostMainScreen(
                 }
             }
             item {
-                val appliedServices = allTasks.filter { (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) && it.type == TaskType.SERVICE && it.status != TaskStatus.CANCELLED }
+                val appliedServices = allTasks.filter {
+                    (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) &&
+                    it.type == TaskType.SERVICE &&
+                    it.status != TaskStatus.CANCELLED &&
+                    !it.hiddenByRunner &&
+                    !it.cancelledByAdmin
+                }
                 ExpandableListSection("Applications (Services)", appliedServices.size, applicationsServiceExpanded, { applicationsServiceExpanded = !applicationsServiceExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (appliedServices.isEmpty()) EmptyHistoryItem("No applications sent for services.")
@@ -392,10 +458,11 @@ fun PostMainScreen(
                             val isRejected = task.runnerId != null && task.runnerId != user?.id
                             val isPending = !isChosen && !isRejected
                             CompactHistoryItem(
-                                task, 
-                                { onTaskClick(task) }, 
+                                task,
+                                { onTaskClick(task) },
                                 if (isChosen) "ACCEPTED" else if (isRejected) "REJECTED" else "PENDING",
                                 onCancel = if (isPending) { { taskViewModel.withdrawApplication(task.id, user?.id ?: "") } } else null,
+                                onHide = { taskViewModel.hideTaskForUser(task.id, user?.id ?: "") },
                                 onAction = if (isChosen && task.status == TaskStatus.ASSIGNED) { { taskToMarkFinished = task } } else null,
                                 actionLabel = if (isChosen && task.status == TaskStatus.ASSIGNED) "Finish" else null
                             )
@@ -409,22 +476,22 @@ fun PostMainScreen(
 
 @Composable
 fun SectionLabel(text: String) {
-    Text(text = text, style = MaterialTheme.typography.labelLarge, color = Color.Gray, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
+    Text(text = text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 4.dp))
 }
 
 @Composable
 fun PostTypeCard(title: String, subtitle: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier) {
     Surface(
         modifier = modifier.height(140.dp).shadow(4.dp, RoundedCornerShape(24.dp)).clickable { onClick() },
-        color = Color.White, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, color.copy(alpha = 0.1f))
+        color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(24.dp), border = BorderStroke(1.dp, color.copy(alpha = 0.1f))
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = color.copy(alpha = 0.1f)) {
                 Box(contentAlignment = Alignment.Center) { Icon(icon, null, tint = color, modifier = Modifier.size(24.dp)) }
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp)
-            Text(subtitle, fontSize = 11.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+            Text(title, fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
+            Text(subtitle, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -437,15 +504,15 @@ fun ExpandableListSection(title: String, count: Int, isExpanded: Boolean, onTogg
             horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                Text(title, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = MaterialTheme.colorScheme.onSurface)
                 if (count > 0) {
                     Spacer(modifier = Modifier.width(8.dp))
-                    Surface(color = Color(0xFF800000), shape = CircleShape) {
-                        Text("$count", modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Surface(color = MaterialTheme.colorScheme.primary, shape = CircleShape) {
+                        Text("$count", modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), color = MaterialTheme.colorScheme.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
-            Icon(if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = Color.Gray)
+            Icon(if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         AnimatedVisibility(visible = isExpanded, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) { content() }
     }
@@ -453,10 +520,11 @@ fun ExpandableListSection(title: String, count: Int, isExpanded: Boolean, onTogg
 
 @Composable
 fun CompactHistoryItem(
-    task: Task, 
-    onClick: () -> Unit, 
-    customStatus: String? = null, 
+    task: Task,
+    onClick: () -> Unit,
+    customStatus: String? = null,
     onCancel: (() -> Unit)? = null,
+    onHide: (() -> Unit)? = null,
     onAction: (() -> Unit)? = null,
     actionLabel: String? = null
 ) {
@@ -469,20 +537,20 @@ fun CompactHistoryItem(
 
     Surface(
         modifier = Modifier.fillMaxWidth().clickable { onClick() },
-        color = Color.White, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+        color = MaterialTheme.colorScheme.surface, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Surface(modifier = Modifier.size(40.dp), shape = RoundedCornerShape(10.dp), color = Color(0xFFF5F5F5)) {
+            Surface(modifier = Modifier.size(40.dp), shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.surfaceVariant) {
                 Box(contentAlignment = Alignment.Center) {
-                    Icon(if (task.type == TaskType.REQUEST) Icons.Default.PersonSearch else Icons.Default.Storefront, null, tint = Color.Gray, modifier = Modifier.size(20.dp))
+                    Icon(if (task.type == TaskType.REQUEST) Icons.Default.PersonSearch else Icons.Default.Storefront, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(task.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(task.title, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
                 Text(text = customStatus ?: task.status.name.lowercase().replaceFirstChar { it.uppercase() }, color = statusColor, fontSize = 11.sp, fontWeight = FontWeight.Bold)
             }
-            
+
             if (onAction != null && actionLabel != null) {
                 Button(onClick = onAction, shape = RoundedCornerShape(8.dp), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp), modifier = Modifier.height(32.dp)) {
                     Text(actionLabel, fontSize = 10.sp)
@@ -494,8 +562,12 @@ fun CompactHistoryItem(
                 IconButton(onClick = onCancel, modifier = Modifier.size(32.dp)) {
                     Icon(Icons.Default.Cancel, null, tint = Color.Red, modifier = Modifier.size(20.dp))
                 }
+            } else if (onHide != null && (task.status == TaskStatus.CANCELLED || task.status == TaskStatus.COMPLETED || customStatus == "REJECTED")) {
+                IconButton(onClick = onHide, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.Close, null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(20.dp))
+                }
             } else if (onAction == null) {
-                Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), fontWeight = FontWeight.Black, color = Color(0xFF800000), fontSize = 14.sp)
+                Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), fontWeight = FontWeight.Black, color = MaterialTheme.colorScheme.primary, fontSize = 14.sp)
             }
         }
     }
@@ -511,27 +583,64 @@ fun EmptyHistoryItem(text: String) {
 fun CreateTaskScreen(
     type: TaskType,
     taskToEdit: Task? = null,
+    initialLatLng: com.google.android.gms.maps.model.LatLng? = null,
+    initialAddress: String? = null,
+    onOpenMap: () -> Unit,
     onBack: () -> Unit,
-    onConfirm: (String, String, TaskCategory, String, String, String, Double?, List<Uri>) -> Unit
+    onConfirm: (String, String, TaskCategory, String, String, String, Double?, List<Uri>, Double?, Double?, String?, Double?, Double?) -> Unit
 ) {
     var title by remember { mutableStateOf(taskToEdit?.title ?: "") }
     var desc by remember { mutableStateOf(taskToEdit?.description ?: "") }
     var campus by remember { mutableStateOf(taskToEdit?.campus ?: "UTMKL") }
     var address by remember { mutableStateOf(taskToEdit?.address ?: "") }
+    var destinationAddress by remember { mutableStateOf(taskToEdit?.destinationAddress ?: "") }
     var deadline by remember { mutableStateOf(taskToEdit?.deadline ?: "") }
     var amount by remember { mutableStateOf(taskToEdit?.paymentAmount?.toString() ?: "") }
-    
+
+    var lat by remember { mutableStateOf(taskToEdit?.latitude ?: initialLatLng?.latitude) }
+    var lng by remember { mutableStateOf(taskToEdit?.longitude ?: initialLatLng?.longitude) }
+    var destLat by remember { mutableStateOf(taskToEdit?.destinationLatitude) }
+    var destLng by remember { mutableStateOf(taskToEdit?.destinationLongitude) }
+
+    var mapPickerMode by remember { mutableStateOf("START") } // "START" or "DEST"
+
+    LaunchedEffect(initialLatLng, initialAddress) {
+        if (initialLatLng != null) {
+            if (mapPickerMode == "START") {
+                lat = initialLatLng.latitude
+                lng = initialLatLng.longitude
+                if (initialAddress != null) address = initialAddress
+            } else {
+                destLat = initialLatLng.latitude
+                destLng = initialLatLng.longitude
+                if (initialAddress != null) destinationAddress = initialAddress
+            }
+        }
+    }
+
     var hasPrice by remember { mutableStateOf(taskToEdit?.paymentAmount != 0.0) }
     var hasDeadline by remember { mutableStateOf(taskToEdit?.deadline?.isNotBlank() ?: true) }
-    
+    var hasDestination by remember { mutableStateOf(taskToEdit?.destinationAddress?.isNotBlank() ?: (taskToEdit?.category == TaskCategory.CARPOOL)) }
+
     var selectedCategory by remember { mutableStateOf(taskToEdit?.category ?: TaskCategory.GENERAL) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var selectedImages by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
+    // Auto-toggle destination for Carpool
+    LaunchedEffect(selectedCategory) {
+        if (selectedCategory == TaskCategory.CARPOOL) {
+            hasDestination = true
+        }
+    }
+
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var isMagicSuggesting by remember { mutableStateOf(false) }
+
     var showDatePicker by remember { mutableStateOf(false) }
     var showTimePicker by remember { mutableStateOf(false) }
     val datePickerState = rememberDatePickerState()
-    
+
     // Explicitly reset selection when opening to avoid old state issues
     LaunchedEffect(showDatePicker) {
         if (showDatePicker && taskToEdit == null) {
@@ -546,16 +655,16 @@ fun CreateTaskScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
-                    val titleText = if (taskToEdit != null) "Update Task" 
-                                   else if (type == TaskType.REQUEST) "Post Request" 
+                title = {
+                    val titleText = if (taskToEdit != null) "Update Task"
+                                   else if (type == TaskType.REQUEST) "Post Request"
                                    else "Offer Service"
-                    Text(titleText, fontWeight = FontWeight.Bold) 
+                    Text(titleText, fontWeight = FontWeight.Bold)
                 },
                 navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } }
             )
         },
-        containerColor = Color.White
+        containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 24.dp).verticalScroll(rememberScrollState()),
@@ -563,13 +672,13 @@ fun CreateTaskScreen(
         ) {
             if (taskToEdit == null) {
                 Column {
-                    Text("Attachments (${selectedImages.size}/7)", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+                    Text("Attachments (${selectedImages.size}/7)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                     Spacer(modifier = Modifier.height(12.dp))
                     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         if (selectedImages.size < 7) {
                             item {
-                                Surface(modifier = Modifier.size(90.dp), shape = RoundedCornerShape(16.dp), color = Color(0xFFF5F5F5), border = BorderStroke(1.dp, Color.LightGray.copy(alpha = 0.3f))) {
-                                    Box(modifier = Modifier.clickable { photoPickerLauncher.launch("image/*") }, contentAlignment = Alignment.Center) { Icon(Icons.Default.AddAPhoto, null, tint = Color.Gray) }
+                                Surface(modifier = Modifier.size(90.dp), shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.surfaceVariant, border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))) {
+                                    Box(modifier = Modifier.clickable { photoPickerLauncher.launch("image/*") }, contentAlignment = Alignment.Center) { Icon(Icons.Default.AddAPhoto, null, tint = MaterialTheme.colorScheme.onSurfaceVariant) }
                                 }
                             }
                         }
@@ -583,10 +692,53 @@ fun CreateTaskScreen(
                 }
             }
 
-            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Task Title") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), placeholder = { Text("E.g. Help buy food, Carpool to JB...") })
+            OutlinedTextField(
+                value = title,
+                onValueChange = { title = it },
+                label = { Text("Task Title") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                placeholder = { Text("E.g. Help buy food, Carpool to JB...") },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                ),
+                trailingIcon = {
+                    if (title.length > 5 && taskToEdit == null) {
+                        if (isMagicSuggesting) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                        } else {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    isMagicSuggesting = true
+                                    val suggestion = AiAgentManager.suggestMetadata(title, desc)
+                                    if (suggestion.category != null || suggestion.campus != null) {
+                                        suggestion.category?.let { cat: com.example.taskgo.data.model.TaskCategory ->
+                                            selectedCategory = cat
+                                        }
+                                        suggestion.campus?.let { cam: String ->
+                                            campus = cam
+                                        }
+                                        android.widget.Toast.makeText(context, "Smart suggestions applied!", android.widget.Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        android.widget.Toast.makeText(context, "No clear suggestions found.", android.widget.Toast.LENGTH_SHORT).show()
+                                    }
+                                    isMagicSuggesting = false
+                                }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = "Magic Suggest",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+            )
 
             Column {
-                Text("Category", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+                Text("Category", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TaskCategory.entries.forEach { cat ->
                         FilterChip(selected = selectedCategory == cat, onClick = { selectedCategory = cat }, label = { Text(cat.name.replace("_", " ").lowercase().replaceFirstChar { it.uppercase() }) })
@@ -595,30 +747,94 @@ fun CreateTaskScreen(
             }
 
             Column {
-                Text("Location", fontWeight = FontWeight.Bold, color = Color.Gray, fontSize = 13.sp)
+                val startLabel = if (type == TaskType.REQUEST && selectedCategory == TaskCategory.CARPOOL) "Pick-up Location" else "Location"
+                Text(startLabel, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = { campus = "UTMKL" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMKL") Color(0xFF800000) else Color(0xFFF5F5F5), contentColor = if (campus == "UTMKL") Color.White else Color.Gray)) { Text("UTMKL") }
-                    Button(onClick = { campus = "UTMJB" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMJB") Color(0xFF800000) else Color(0xFFF5F5F5), contentColor = if (campus == "UTMJB") Color.White else Color.Gray)) { Text("UTMJB") }
+                    Button(onClick = { campus = "UTMKL" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMKL") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (campus == "UTMKL") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text("UTMKL") }
+                    Button(onClick = { campus = "UTMJB" }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMJB") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (campus == "UTMJB") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text("UTMJB") }
                 }
                 Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Detailed Address") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
+                OutlinedTextField(
+                    value = address,
+                    onValueChange = { address = it },
+                    label = { Text(if (type == TaskType.REQUEST && selectedCategory == TaskCategory.CARPOOL) "Start Address" else "Detailed Address") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = {
+                        IconButton(onClick = {
+                            mapPickerMode = "START"
+                            onOpenMap()
+                        }) {
+                            Icon(
+                                Icons.Default.LocationOn,
+                                contentDescription = "Pick on Map",
+                                tint = if (lat != null) Color(0xFF43A047) else MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                    )
+                )
+                
+                if (type == TaskType.REQUEST && selectedCategory != TaskCategory.CARPOOL) {
+                    Row(modifier = Modifier.fillMaxWidth().padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = hasDestination, onCheckedChange = { hasDestination = it })
+                        Text("Add a drop-off/delivery destination?", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+
+                if (type == TaskType.REQUEST && hasDestination) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = destinationAddress,
+                        onValueChange = { destinationAddress = it },
+                        label = { Text(if (selectedCategory == TaskCategory.CARPOOL) "Destination Address" else "Delivery/Drop-off Address") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                mapPickerMode = "DEST"
+                                onOpenMap()
+                            }) {
+                                Icon(
+                                    Icons.Default.PinDrop,
+                                    contentDescription = "Pick Destination",
+                                    tint = if (destLat != null) Color(0xFF43A047) else MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    )
+                }
             }
 
             // Toggles for Price and Deadline (Service only)
             if (type == TaskType.SERVICE) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Include Price?", fontWeight = FontWeight.Medium)
-                    Switch(checked = hasPrice, onCheckedChange = { hasPrice = it }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF800000)))
+                    Text("Include Price?", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                    Switch(checked = hasPrice, onCheckedChange = { hasPrice = it }, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary))
                 }
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Include Deadline?", fontWeight = FontWeight.Medium)
-                    Switch(checked = hasDeadline, onCheckedChange = { hasDeadline = it }, colors = SwitchDefaults.colors(checkedThumbColor = Color(0xFF800000)))
+                    Text("Include Deadline?", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
+                    Switch(checked = hasDeadline, onCheckedChange = { hasDeadline = it }, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary))
                 }
             }
 
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 if (hasPrice) {
-                    OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Price (RM)") }, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp), prefix = { Text("RM ") })
+                    OutlinedTextField(
+                        value = amount,
+                        onValueChange = { amount = it },
+                        label = { Text("Price (RM)") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        prefix = { Text("RM ", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                        )
+                    )
                 }
                 if (hasDeadline) {
                     Surface(
@@ -627,8 +843,8 @@ fun CreateTaskScreen(
                             .height(60.dp)
                             .clickable { showDatePicker = true },
                         shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, Color.LightGray),
-                        color = Color.White
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                        color = MaterialTheme.colorScheme.surface
                     ) {
                         Row(
                             modifier = Modifier
@@ -638,22 +854,33 @@ fun CreateTaskScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Deadline", fontSize = 12.sp, color = Color.Gray)
+                                Text("Deadline", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 Text(
                                     text = deadline.ifBlank { "Select Date/Time" },
                                     fontSize = 14.sp,
-                                    color = if (deadline.isBlank()) Color.LightGray else Color.Black,
+                                    color = if (deadline.isBlank()) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Icon(Icons.Default.CalendarMonth, null, tint = Color(0xFF800000), modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
             }
 
-            OutlinedTextField(value = desc, onValueChange = { desc = it }, label = { Text("Description") }, modifier = Modifier.fillMaxWidth(), minLines = 4, shape = RoundedCornerShape(12.dp))
+            OutlinedTextField(
+                value = desc,
+                onValueChange = { desc = it },
+                label = { Text("Description") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 4,
+                shape = RoundedCornerShape(12.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                )
+            )
 
             errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold, fontSize = 12.sp) }
 
@@ -661,10 +888,17 @@ fun CreateTaskScreen(
                 onClick = {
                     val amt = if (hasPrice) amount.toDoubleOrNull() ?: 0.0 else 0.0
                     val finalDeadline = if (hasDeadline) deadline else ""
-                    if (title.isBlank() || desc.isBlank() || address.isBlank()) errorMessage = "Please fill all required fields"
-                    else onConfirm(title, desc, selectedCategory, campus, address, finalDeadline, amt, selectedImages)
-                }, 
-                modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF800000))
+                    val finalDestAddr = if (type == TaskType.REQUEST && hasDestination) destinationAddress else null
+
+                    val isAddressRequired = type == TaskType.REQUEST
+
+                    if (title.isBlank() || (isAddressRequired && address.isBlank())) {
+                        errorMessage = if (isAddressRequired) "Please fill all required fields (Title & Address)" else "Please enter a Title"
+                    } else {
+                        onConfirm(title, desc, selectedCategory, campus, address, finalDeadline, amt, selectedImages, lat, lng, finalDestAddr, destLat, destLng)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) { Text(if (taskToEdit != null) "Update Task" else "Publish Task", fontWeight = FontWeight.Bold, fontSize = 16.sp) }
             
             Spacer(modifier = Modifier.height(100.dp))

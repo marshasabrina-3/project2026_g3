@@ -38,6 +38,8 @@ import com.example.taskgo.data.model.TaskType
 import com.example.taskgo.ui.viewmodel.TaskViewModel
 import com.example.taskgo.ui.viewmodel.UserViewModel
 import com.example.taskgo.util.ImageUtils
+import com.example.taskgo.util.AiAgentManager
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -51,28 +53,22 @@ fun MarketplaceScreen(
 ) {
     val searchQuery by taskViewModel.searchQuery.collectAsState()
     val selectedCategory by taskViewModel.selectedCategory.collectAsState()
+    val selectedCampus by taskViewModel.selectedCampus.collectAsState()
+    val selectedType by taskViewModel.selectedType.collectAsState()
     val allTasks by taskViewModel.allTasks.collectAsState()
-    
+
+    val scope = rememberCoroutineScope()
+    var isMagicSearching by remember { mutableStateOf(false) }
+
     var showFilterSheet by remember { mutableStateOf(false) }
     var showSortMenu by remember { mutableStateOf(false) }
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
-    var selectedCampus by remember { mutableStateOf<String?>(null) }
-    var selectedType by remember { mutableStateOf<TaskType?>(null) }
+    var taskToDelete by remember { mutableStateOf<Task?>(null) }
+    val currentUser by userViewModel.currentUser.collectAsState()
 
-    val displayedTasks = remember(allTasks, searchQuery, selectedCategory, selectedCampus, selectedType) {
-        allTasks.filter { task ->
-            val isLive = task.status == TaskStatus.OPEN
-            val matchesSearch = task.title.contains(searchQuery, ignoreCase = true) || 
-                               task.description.contains(searchQuery, ignoreCase = true)
-            val matchesCategory = selectedCategory == null || task.category == selectedCategory
-            val matchesCampus = selectedCampus == null || task.campus == selectedCampus
-            val matchesType = selectedType == null || task.type == selectedType
-            
-            isLive && matchesSearch && matchesCategory && matchesCampus && matchesType
-        }
-    }
+    val displayedTasks by taskViewModel.filteredTasks.collectAsState(initial = emptyList())
 
-    val utmMaroon = Color(0xFF800000)
+    val utmMaroon = MaterialTheme.colorScheme.primary
 
     if (selectedTaskForDetail != null) {
         val allTasks by taskViewModel.allTasks.collectAsState()
@@ -92,19 +88,19 @@ fun MarketplaceScreen(
                 }
             },
             onReport = { /* Handle report */ },
-            onChat = { otherId, title -> 
+            onChat = { otherId, title ->
                 onChat(currentTask.id, otherId, title)
             },
             modifier = modifier
         )
     } else {
-        Column(modifier = modifier.fillMaxSize().background(Color(0xFFF9F9F9))) {
+        Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             // Header Section - Lowered
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
-                        brush = Brush.horizontalGradient(listOf(utmMaroon, Color(0xFFB30000))),
+                        brush = Brush.horizontalGradient(listOf(utmMaroon, MaterialTheme.colorScheme.primary.copy(alpha = 0.8f))),
                         shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp)
                     )
                     .padding(horizontal = 20.dp)
@@ -124,18 +120,44 @@ fun MarketplaceScreen(
                             Image(painter = painterResource(id = R.drawable.utmlogo), contentDescription = "Logo", modifier = Modifier.fillMaxSize().padding(6.dp))
                         }
                     }
-                    
+
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = Color.White) {
+                    Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surface) {
                         Row(modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Search, contentDescription = null, tint = utmMaroon, modifier = Modifier.size(20.dp))
+                            if (isMagicSearching) {
+                                CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = utmMaroon)
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Default.AutoAwesome,
+                                    contentDescription = "Smart Search",
+                                    tint = utmMaroon,
+                                    modifier = Modifier.size(20.dp).clickable {
+                                        scope.launch {
+                                            isMagicSearching = true
+                                            val aiResult = AiAgentManager.processSmartSearch(searchQuery)
+                                            taskViewModel.applyAiFilters(
+                                                aiResult.category,
+                                                aiResult.campus,
+                                                aiResult.type,
+                                                aiResult.query
+                                            )
+                                            isMagicSearching = false
+                                        }
+                                    }
+                                )
+                            }
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { taskViewModel.onSearchQueryChange(it) },
-                                placeholder = { Text("What are you looking for?") },
+                                placeholder = { Text("Try: 'Hungry at UTMKL'...") },
                                 modifier = Modifier.weight(1f),
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color.Transparent, unfocusedBorderColor = Color.Transparent),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = Color.Transparent,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                                ),
                                 singleLine = true
                             )
                             IconButton(onClick = { showSortMenu = true }) {
@@ -144,7 +166,7 @@ fun MarketplaceScreen(
                             IconButton(onClick = { showFilterSheet = true }) {
                                 Icon(Icons.Default.Tune, contentDescription = "Filter", tint = utmMaroon, modifier = Modifier.size(20.dp))
                             }
-                            
+
                             DropdownMenu(expanded = showSortMenu, onDismissRequest = { showSortMenu = false }) {
                                 TaskViewModel.SortOption.entries.forEach { option ->
                                     DropdownMenuItem(
@@ -188,9 +210,9 @@ fun MarketplaceScreen(
                         onClick = { typeExpanded = true }
                     )
                     DropdownMenu(expanded = typeExpanded, onDismissRequest = { typeExpanded = false }) {
-                        DropdownMenuItem(text = { Text("All Tasks") }, onClick = { selectedType = null; typeExpanded = false })
-                        DropdownMenuItem(text = { Text("Requests") }, onClick = { selectedType = TaskType.REQUEST; typeExpanded = false })
-                        DropdownMenuItem(text = { Text("Services") }, onClick = { selectedType = TaskType.SERVICE; typeExpanded = false })
+                        DropdownMenuItem(text = { Text("All Tasks") }, onClick = { taskViewModel.onTypeChange(null); typeExpanded = false })
+                        DropdownMenuItem(text = { Text("Requests") }, onClick = { taskViewModel.onTypeChange(TaskType.REQUEST); typeExpanded = false })
+                        DropdownMenuItem(text = { Text("Services") }, onClick = { taskViewModel.onTypeChange(TaskType.SERVICE); typeExpanded = false })
                     }
                 }
 
@@ -220,14 +242,14 @@ fun MarketplaceScreen(
                         onClick = { campusExpanded = true }
                     )
                     DropdownMenu(expanded = campusExpanded, onDismissRequest = { campusExpanded = false }) {
-                        DropdownMenuItem(text = { Text("Both Campus") }, onClick = { selectedCampus = null; campusExpanded = false })
-                        DropdownMenuItem(text = { Text("UTMKL") }, onClick = { selectedCampus = "UTMKL"; campusExpanded = false })
-                        DropdownMenuItem(text = { Text("UTMJB") }, onClick = { selectedCampus = "UTMJB"; campusExpanded = false })
+                        DropdownMenuItem(text = { Text("Both Campus") }, onClick = { taskViewModel.onCampusChange(null); campusExpanded = false })
+                        DropdownMenuItem(text = { Text("UTMKL") }, onClick = { taskViewModel.onCampusChange("UTMKL"); campusExpanded = false })
+                        DropdownMenuItem(text = { Text("UTMJB") }, onClick = { taskViewModel.onCampusChange("UTMJB"); campusExpanded = false })
                     }
                 }
             }
 
-            HorizontalDivider(color = Color.LightGray.copy(alpha = 0.2f))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
 
             // Task List
             LazyColumn(
@@ -238,7 +260,7 @@ fun MarketplaceScreen(
                 if (displayedTasks.isEmpty()) {
                     item {
                         Box(modifier = Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No tasks available", color = Color.Gray)
+                            Text("No tasks available", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
                 } else {
@@ -248,7 +270,13 @@ fun MarketplaceScreen(
                     if (requests.isNotEmpty()) {
                         item { SectionHeader("Requests", utmMaroon) }
                         items(requests) { task ->
-                            ModernTaskItem(task = task, taskViewModel = taskViewModel, onClick = { selectedTaskForDetail = task })
+                            ModernTaskItem(
+                                task = task,
+                                taskViewModel = taskViewModel,
+                                onClick = { selectedTaskForDetail = task },
+                                isAdmin = currentUser?.role == com.example.taskgo.data.model.UserRole.ADMIN,
+                                onAdminDelete = { taskToDelete = it }
+                            )
                         }
                     }
 
@@ -258,11 +286,17 @@ fun MarketplaceScreen(
                         }
                         item { SectionHeader("Services", utmMaroon) }
                         items(services) { task ->
-                            ModernTaskItem(task = task, taskViewModel = taskViewModel, onClick = { selectedTaskForDetail = task })
+                            ModernTaskItem(
+                                task = task,
+                                taskViewModel = taskViewModel,
+                                onClick = { selectedTaskForDetail = task },
+                                isAdmin = currentUser?.role == com.example.taskgo.data.model.UserRole.ADMIN,
+                                onAdminDelete = { taskToDelete = it }
+                            )
                         }
                     }
                 }
-                
+
                 item { Spacer(modifier = Modifier.height(80.dp)) }
             }
         }
@@ -270,6 +304,29 @@ fun MarketplaceScreen(
 
     if (showFilterSheet) {
         FilterBottomSheet(taskViewModel = taskViewModel, onDismiss = { showFilterSheet = false })
+    }
+
+    if (taskToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { taskToDelete = null },
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = { Text(text = "Admin: Confirm Removal", fontWeight = FontWeight.Bold) },
+            text = { Text("Are you sure you want to remove \"${taskToDelete?.title}\"? This action will hide it from all students.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        taskViewModel.updateTask(taskToDelete!!.copy(status = com.example.taskgo.data.model.TaskStatus.REMOVED))
+                        taskToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Remove Task")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { taskToDelete = null }) { Text("Cancel") }
+            }
+        )
     }
 }
 
@@ -281,8 +338,8 @@ fun FilterDropdown(label: String, selected: String, onClick: () -> Unit) {
             .height(54.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFE5E5E5)),
-        color = Color.White,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = MaterialTheme.colorScheme.surface,
         shadowElevation = 2.dp
     ) {
         Row(
@@ -296,7 +353,7 @@ fun FilterDropdown(label: String, selected: String, onClick: () -> Unit) {
                 Text(
                     text = label,
                     fontSize = 10.sp,
-                    color = Color(0xFF800000),
+                    color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.ExtraBold,
                     letterSpacing = 0.5.sp
                 )
@@ -304,7 +361,7 @@ fun FilterDropdown(label: String, selected: String, onClick: () -> Unit) {
                     text = selected,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Black,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -313,7 +370,7 @@ fun FilterDropdown(label: String, selected: String, onClick: () -> Unit) {
                 imageVector = Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = Color.Gray
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
@@ -331,78 +388,99 @@ fun SectionHeader(title: String, color: Color) {
 }
 
 @Composable
-fun ModernTaskItem(task: Task, taskViewModel: TaskViewModel, onClick: () -> Unit) {
-    val utmMaroon = Color(0xFF800000)
+fun ModernTaskItem(
+    task: Task,
+    taskViewModel: TaskViewModel,
+    onClick: () -> Unit,
+    isAdmin: Boolean = false,
+    onAdminDelete: (Task) -> Unit = {}
+) {
+    val utmMaroon = MaterialTheme.colorScheme.primary
     val formattedPrice = "RM %.2f".format(Locale.getDefault(), task.paymentAmount)
     val postDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(task.timestamp))
 
     Card(
         modifier = Modifier.fillMaxWidth().shadow(1.dp, RoundedCornerShape(12.dp)),
         onClick = onClick,
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            // Task Image Thumbnail
-            Box(
-                modifier = Modifier.size(70.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFFF5F5F5)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (task.images.isNotEmpty()) {
-                    val imageBytes = remember(task.images.first()) { ImageUtils.decodeBase64ToByteArray(task.images.first()) }
-                    AsyncImage(
-                        model = imageBytes,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(Icons.Default.Image, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(30.dp))
+        Column {
+            if (isAdmin) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(utmMaroon.copy(alpha = 0.1f)).padding(horizontal = 12.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("ADMIN CONTROL", fontSize = 9.sp, fontWeight = FontWeight.Black, color = utmMaroon)
+                    IconButton(onClick = { onAdminDelete(task) }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                    }
                 }
             }
-            
-            Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = task.category.name.replace("_", " "), fontSize = 9.sp, color = utmMaroon, fontWeight = FontWeight.Bold)
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(text = task.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = formattedPrice, fontSize = 14.sp, color = utmMaroon, fontWeight = FontWeight.ExtraBold)
+            Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                // Task Image Thumbnail
+                Box(
+                    modifier = Modifier.size(70.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (task.images.isNotEmpty()) {
+                        val imageBytes = remember(task.images.first()) { ImageUtils.decodeBase64ToByteArray(task.images.first()) }
+                        AsyncImage(
+                            model = imageBytes,
+                            contentDescription = null,
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                    } else {
+                        Icon(Icons.Default.Image, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(30.dp))
+                    }
                 }
                 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(10.dp))
-                    Text(text = " ${task.campus}", fontSize = 10.sp, color = Color.Gray)
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = task.category.name.replace("_", " "), fontSize = 9.sp, color = utmMaroon, fontWeight = FontWeight.Bold)
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = task.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = formattedPrice, fontSize = 14.sp, color = utmMaroon, fontWeight = FontWeight.ExtraBold)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(10.dp))
+                        Text(text = " ${task.campus}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                        Icon(Icons.Default.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = "By: ", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        NameWithRating(
+                            name = task.requesterName.ifBlank { "User" },
+                            rating = taskViewModel.getUserRating(task.requesterId),
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "By: ", fontSize = 10.sp, color = Color.Gray)
-                    NameWithRating(
-                        name = task.requesterName.ifBlank { "User" },
-                        rating = taskViewModel.getUserRating(task.requesterId),
-                        fontSize = 10.sp,
-                        color = Color.Gray,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.weight(1f)
-                    )
+                // Deadline and Post Date Segment
+                Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
+                    if (task.deadline.isNotBlank()) {
+                        Text(text = "Deadline:", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = task.deadline, fontSize = 9.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(text = "Posted on: $postDate", fontSize = 8.sp, color = MaterialTheme.colorScheme.outline)
                 }
-            }
-            
-            // Deadline and Post Date Segment
-            Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-                if (task.deadline.isNotBlank()) {
-                    Text(text = "Deadline:", fontSize = 8.sp, color = Color.Gray)
-                    Text(text = task.deadline, fontSize = 9.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(text = "Posted on: $postDate", fontSize = 8.sp, color = Color.LightGray)
             }
         }
     }
@@ -413,8 +491,8 @@ fun ModernTaskItem(task: Task, taskViewModel: TaskViewModel, onClick: () -> Unit
 fun FilterBottomSheet(taskViewModel: TaskViewModel, onDismiss: () -> Unit) {
     val priceRange by taskViewModel.priceRange.collectAsState()
     val formattedRange = "Price: RM %.2f - %s".format(
-        Locale.getDefault(), 
-        priceRange.start, 
+        Locale.getDefault(),
+        priceRange.start,
         if (priceRange.endInclusive >= 100.0) "100+" else "%.2f".format(Locale.getDefault(), priceRange.endInclusive)
     )
 

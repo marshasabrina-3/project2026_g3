@@ -8,10 +8,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -20,7 +17,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -42,7 +43,9 @@ fun LoginScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var rememberMe by remember { mutableStateOf(false) }
     var showResetDialog by remember { mutableStateOf(false) }
+    var showSupportDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
     // Local state to capture and present immediate validation issues (Task #157)
     var localValidationError by remember { mutableStateOf<String?>(null) }
 
@@ -106,7 +109,7 @@ fun LoginScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.White),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
             ) {
                 Column(
@@ -117,7 +120,7 @@ fun LoginScreen(
                         "Welcome Back",
                         style = MaterialTheme.typography.headlineSmall,
                         fontWeight = FontWeight.Bold,
-                        color = utmMaroon
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -130,8 +133,12 @@ fun LoginScreen(
                         label = { Text("UTM Email") },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = utmMaroon) },
-                        suffix = { Text("@graduate.utm.my", color = Color.Gray, fontSize = 12.sp) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                        suffix = { Text("@graduate.utm.my", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                        ),
                         singleLine = true
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -146,13 +153,17 @@ fun LoginScreen(
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = utmMaroon) },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                         trailingIcon = {
                             val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
                             IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(imageVector = image, contentDescription = null, tint = Color.Gray)
+                                Icon(imageVector = image, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                        ),
                         singleLine = true
                     )
 
@@ -165,12 +176,12 @@ fun LoginScreen(
                             Checkbox(
                                 checked = rememberMe,
                                 onCheckedChange = { rememberMe = it },
-                                colors = CheckboxDefaults.colors(checkedColor = utmMaroon)
+                                colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
                             )
-                            Text("Remember Me", style = MaterialTheme.typography.bodySmall)
+                            Text("Remember Me", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurface)
                         }
                         TextButton(onClick = { if (emailPrefix.isNotBlank()) showResetDialog = true }) {
-                            Text("Forgot Password?", color = utmMaroon, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                            Text("Forgot Password?", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -201,10 +212,10 @@ fun LoginScreen(
                             .fillMaxWidth()
                             .height(56.dp),
                         shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = utmMaroon)
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
                         if (userViewModel.isLoading.collectAsState().value) {
-                            CircularProgressIndicator(color = Color.White)
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
                         } else {
                             Text("LOGIN", fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 2.sp)
                         }
@@ -248,7 +259,55 @@ fun LoginScreen(
                     fontWeight = FontWeight.Bold
                 )
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(onClick = { showSupportDialog = true }) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AccountCircle, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Contact Support", color = Color.White, style = MaterialTheme.typography.bodySmall)
+                }
+            }
         }
+    }
+
+    if (showSupportDialog) {
+        val clipboardManager = LocalClipboardManager.current
+        AlertDialog(
+            onDismissRequest = { showSupportDialog = false },
+            title = { Text("TaskGO Support", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("If you encounter any issues, please contact our administrator:", style = MaterialTheme.typography.bodyMedium)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text("Name:", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text("Wan Muhamad Danish Bin Wan Muhamad Nubli", fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Email:", fontSize = 10.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                            Text("wanmuhamaddanish@graduate.utm.my")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    clipboardManager.setText(AnnotatedString("wanmuhamaddanish@graduate.utm.my"))
+                    android.widget.Toast.makeText(context, "Email copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Copy Email")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSupportDialog = false }) {
+                    Text("Close")
+                }
+            }
+        )
     }
 
     if (showResetDialog) {

@@ -1,14 +1,8 @@
 package com.example.taskgo.navigation
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -25,12 +19,13 @@ import com.example.taskgo.data.model.UserRole
 import com.example.taskgo.data.model.UserStatus
 import com.example.taskgo.ui.screens.*
 import com.example.taskgo.ui.viewmodel.UserViewModel
-import androidx.compose.runtime.LaunchedEffect
 
 sealed class Screen(val route: String) {
     object Login : Screen("login")
     object Register : Screen("register")
-    object Main : Screen("main")
+    object Main : Screen("main?taskId={taskId}") {
+        fun createRoute(taskId: String? = null) = if (taskId != null) "main?taskId=$taskId" else "main"
+    }
     object Admin : Screen("admin")
     object Restricted : Screen("restricted")
 }
@@ -47,8 +42,6 @@ fun TaskGONavGraph(navController: NavHostController) {
         } else if (currentUser != null) {
             if (currentUser?.status == UserStatus.BANNED || currentUser?.status == UserStatus.SUSPENDED) {
                 Screen.Restricted.route
-            } else if (currentUser?.role == UserRole.ADMIN) {
-                Screen.Admin.route
             } else {
                 Screen.Main.route
             }
@@ -107,9 +100,18 @@ fun TaskGONavGraph(navController: NavHostController) {
             composable(
                 route = Screen.Main.route,
                 deepLinks = listOf(
-                    navDeepLink { uriPattern = "taskgo://main" }
+                    navDeepLink { uriPattern = "taskgo://main?taskId={taskId}" }
+                ),
+                arguments = listOf(
+                    androidx.navigation.navArgument("taskId") {
+                        type = androidx.navigation.NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
                 )
-            ) {
+            ) { backStackEntry ->
+                val deepLinkTaskId = backStackEntry.arguments?.getString("taskId")
+                
                 if (currentUser?.status == UserStatus.BANNED || currentUser?.status == UserStatus.SUSPENDED) {
                     LaunchedEffect(Unit) {
                         navController.navigate(Screen.Restricted.route) { popUpTo(0) { inclusive = true } }
@@ -117,6 +119,7 @@ fun TaskGONavGraph(navController: NavHostController) {
                 }
                 MainContainerScreen(
                     userViewModel = userViewModel,
+                    initialTaskId = deepLinkTaskId,
                     onLogout = {
                         userViewModel.logout()
                         navController.navigate(Screen.Login.route) {
@@ -151,6 +154,29 @@ fun TaskGONavGraph(navController: NavHostController) {
             }
 
             composable(Screen.Restricted.route) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                var timeLeft by remember { mutableStateOf("") }
+                
+                LaunchedEffect(currentUser) {
+                    if (currentUser?.status == UserStatus.SUSPENDED) {
+                        while(true) {
+                            val endMillis = currentUser?.suspensionEndDate?.toLongOrNull() ?: 0L
+                            val now = System.currentTimeMillis()
+                            val diff = endMillis - now
+                            if (diff <= 0) {
+                                timeLeft = "Suspension expired. Please log in again."
+                                break
+                            }
+                            val days = diff / (24 * 60 * 60 * 1000)
+                            val hours = (diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)
+                            val mins = (diff % (60 * 60 * 1000)) / (60 * 1000)
+                            val secs = (diff % (60 * 1000)) / 1000
+                            timeLeft = "${days}d ${hours}h ${mins}m ${secs}s remaining"
+                            kotlinx.coroutines.delay(1000)
+                        }
+                    }
+                }
+
                 Box(
                     modifier = Modifier.fillMaxSize().padding(24.dp),
                     contentAlignment = Alignment.Center
@@ -168,9 +194,9 @@ fun TaskGONavGraph(navController: NavHostController) {
                             text = if (currentUser?.status == UserStatus.BANNED) {
                                 "Your access to TaskGO has been permanently terminated due to policy violations."
                             } else {
-                                "Your account is temporarily frozen. Please check back later or contact support."
+                                "Your account is temporarily frozen.\n$timeLeft"
                             },
-                            color = Color.Gray,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 16.sp,
                             textAlign = TextAlign.Center
                         )

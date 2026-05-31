@@ -35,7 +35,12 @@ data class Task(
     val type: TaskType = TaskType.REQUEST,
     val location: String = "",
     val address: String = "", // Specific address under UTMKL/UTMJB
+    val destinationAddress: String? = null, // For Carpool or deliveries
     val campus: String = "UTMKL", // UTMKL or UTMJB
+    val latitude: Double? = null,
+    val longitude: Double? = null,
+    val destinationLatitude: Double? = null,
+    val destinationLongitude: Double? = null,
     val deadline: String = "",
     val paymentAmount: Double = 0.0,
     val status: TaskStatus = TaskStatus.OPEN,
@@ -44,5 +49,8 @@ data class Task(
     val completionProof: String? = null, // Base64 encoded image
     val paymentProof: String? = null, // Base64 encoded image or message ID?
     val timestamp: Long = System.currentTimeMillis(),
-    val completionTimestamp: Long? = null
+    val completionTimestamp: Long? = null,
+    val hiddenByRequester: Boolean = false,
+    val hiddenByRunner: Boolean = false,
+    val cancelledByAdmin: Boolean = false
 )

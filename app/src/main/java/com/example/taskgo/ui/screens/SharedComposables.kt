@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -44,7 +45,7 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun NameWithRating(name: String, rating: Double, modifier: Modifier = Modifier, fontSize: TextUnit = 14.sp, color: Color = Color.Black, fontWeight: FontWeight = FontWeight.Bold) {
+fun NameWithRating(name: String, rating: Double, modifier: Modifier = Modifier, fontSize: TextUnit = 14.sp, color: Color = MaterialTheme.colorScheme.onSurface, fontWeight: FontWeight = FontWeight.Bold) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = modifier) {
         Text(
             text = name,
@@ -57,19 +58,19 @@ fun NameWithRating(name: String, rating: Double, modifier: Modifier = Modifier, 
         )
         Spacer(modifier = Modifier.width(4.dp))
         Surface(
-            color = Color.LightGray.copy(alpha = 0.2f),
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.1f),
             shape = CircleShape
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
             ) {
-                Icon(Icons.Default.Star, null, modifier = Modifier.size(10.dp), tint = Color.Gray)
+                Icon(Icons.Default.Star, null, modifier = Modifier.size(10.dp), tint = Color(0xFFFFB300))
                 Text(
                     text = " %.1f".format(Locale.getDefault(), rating),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.Gray
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
         }
@@ -94,14 +95,14 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = Color.White,
-        title = { Text("Update Task", fontWeight = FontWeight.Bold) },
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text("Update Task", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Title") }, modifier = Modifier.fillMaxWidth())
                 
                 Column {
-                    Text("Category", fontSize = 12.sp, color = Color.Gray)
+                    Text("Category", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     FlowRow(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         TaskCategory.entries.forEach { cat ->
                             FilterChip(
@@ -114,15 +115,15 @@ fun EditTaskDialog(task: Task, onDismiss: () -> Unit, onSave: (Task) -> Unit) {
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = { campus = "UTMKL" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMKL") Color(0xFF800000) else Color(0xFFF5F5F5), contentColor = if (campus == "UTMKL") Color.White else Color.Gray)) { Text("UTMKL", fontSize = 10.sp) }
-                    Button(onClick = { campus = "UTMJB" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMJB") Color(0xFF800000) else Color(0xFFF5F5F5), contentColor = if (campus == "UTMJB") Color.White else Color.Gray)) { Text("UTMJB", fontSize = 10.sp) }
+                    Button(onClick = { campus = "UTMKL" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMKL") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (campus == "UTMKL") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text("UTMKL", fontSize = 10.sp) }
+                    Button(onClick = { campus = "UTMJB" }, modifier = Modifier.weight(1f), colors = ButtonDefaults.buttonColors(containerColor = if (campus == "UTMJB") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant, contentColor = if (campus == "UTMJB") MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant)) { Text("UTMJB", fontSize = 10.sp) }
                 }
 
                 OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("Address") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Price (RM)") }, modifier = Modifier.fillMaxWidth())
 
                 // Deadline field with calendar picker
-                Text("Deadline", fontSize = 12.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                Text("Deadline", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                 Button(
                     onClick = { showDatePicker = true },
                     modifier = Modifier.fillMaxWidth()
@@ -224,15 +225,17 @@ fun TaskDetailScreen(
     modifier: Modifier = Modifier,
     onEdit: (Task) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val currentUser by userViewModel.currentUser.collectAsState()
     val isRequester = currentUser?.id == task.requesterId
-    val utmMaroon = Color(0xFF800000)
+    val utmMaroon = MaterialTheme.colorScheme.primary
 
     var interestedRunners by remember { mutableStateOf<List<User>>(emptyList()) }
     var showConfirmCompleteDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showReviewDialog by remember { mutableStateOf(false) }
     var showReportDialog by remember { mutableStateOf(false) }
+    var showMapDialog by remember { mutableStateOf(false) }
 
     val proofPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri != null) {
@@ -252,14 +255,15 @@ fun TaskDetailScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize().background(Color.White)) {
+    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 if (!isRequester && task.status == TaskStatus.OPEN) {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shadowElevation = 16.dp,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surface,
                         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
                     ) {
                         Row(
@@ -295,7 +299,7 @@ fun TaskDetailScreen(
                                 enabled = !hasApplied,
                                 modifier = Modifier.height(54.dp).weight(0.6f),
                                 shape = RoundedCornerShape(16.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = if (hasApplied) Color.Gray else Color(0xFF43A047))
+                                colors = ButtonDefaults.buttonColors(containerColor = if (hasApplied) MaterialTheme.colorScheme.outlineVariant else Color(0xFF43A047))
                             ) {
                                 Text(if (hasApplied) "Applied" else "Accept", fontWeight = FontWeight.Bold)
                             }
@@ -305,7 +309,7 @@ fun TaskDetailScreen(
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shadowElevation = 16.dp,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.surface,
                         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
                     ) {
                         Row(modifier = Modifier.padding(20.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -403,9 +407,9 @@ fun TaskDetailScreen(
 
                 Column(modifier = Modifier.padding(24.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = task.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                        Surface(color = if (task.status == TaskStatus.OPEN) Color(0xFFE8F5E9) else Color(0xFFF5F5F5), shape = CircleShape) {
-                            Text(text = task.status.name, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (task.status == TaskStatus.OPEN) Color(0xFF2E7D32) else Color.Gray)
+                        Text(text = task.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
+                        Surface(color = if (task.status == TaskStatus.OPEN) Color(0xFFE8F5E9) else MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape) {
+                            Text(text = task.status.name, modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp), fontSize = 10.sp, fontWeight = FontWeight.Black, color = if (task.status == TaskStatus.OPEN) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
 
@@ -422,7 +426,7 @@ fun TaskDetailScreen(
                     }
 
                     val postDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(task.timestamp))
-                    Text(text = "Posted on: $postDate", fontSize = 12.sp, color = Color.Gray, modifier = Modifier.padding(top = 8.dp))
+                    Text(text = "Posted on: $postDate", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                     
                     task.completionTimestamp?.let {
                         val compDate = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(it))
@@ -430,18 +434,33 @@ fun TaskDetailScreen(
                     }
 
                     Text("Description", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 32.dp), color = utmMaroon)
-                    Text(text = task.description, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyLarge, color = Color.DarkGray)
+                    Text(text = task.description, modifier = Modifier.padding(top = 8.dp), style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 32.dp), color = Color.LightGray.copy(0.3f))
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 32.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.LocationOn, null, tint = utmMaroon, modifier = Modifier.size(24.dp))
-                        Text(" Location", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text(" Location", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                        if (task.latitude != null && task.longitude != null) {
+                            Spacer(modifier = Modifier.weight(1f))
+                            TextButton(onClick = { showMapDialog = true }) {
+                                Icon(Icons.Default.Map, null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Open Map", fontSize = 12.sp)
+                            }
+                        }
                     }
-                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)), shape = RoundedCornerShape(16.dp)) {
+                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth().clickable {
+                        if (task.latitude != null && task.longitude != null) {
+                            showMapDialog = true
+                        }
+                    }, colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)), shape = RoundedCornerShape(16.dp)) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Text(text = task.campus, fontWeight = FontWeight.Bold, color = utmMaroon)
-                            Text(text = task.address, style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+                            Text(text = task.address, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            if (task.latitude != null && task.longitude != null) {
+                                Text("📍 GPS coordinates attached", fontSize = 10.sp, color = Color(0xFF43A047), fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
 
@@ -450,15 +469,15 @@ fun TaskDetailScreen(
                         Spacer(modifier = Modifier.height(32.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.TaskAlt, null, tint = Color(0xFF43A047), modifier = Modifier.size(24.dp))
-                            Text(" Completion Proof", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                            Text(" Completion Proof", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                         }
-                        Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF1F8E9)), shape = RoundedCornerShape(16.dp)) {
+                        Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSystemInDarkTheme()) Color(0xFF1B2E1B) else Color(0xFFF1F8E9)), shape = RoundedCornerShape(16.dp)) {
                             Column(modifier = Modifier.padding(16.dp)) {
                                 if (task.completionProof != null) {
                                     val proofBytes = remember(task.completionProof) { ImageUtils.decodeBase64ToByteArray(task.completionProof) }
                                     AsyncImage(model = proofBytes, contentDescription = "Proof", modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(12.dp)), contentScale = ContentScale.Crop)
                                 } else {
-                                    Text("Runner has not uploaded proof yet.", color = Color.Gray, fontSize = 13.sp)
+                                    Text("Runner has not uploaded proof yet.", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
                                 }
                             }
                         }
@@ -468,9 +487,9 @@ fun TaskDetailScreen(
                     Spacer(modifier = Modifier.height(32.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Payments, null, tint = utmMaroon, modifier = Modifier.size(24.dp))
-                        Text(" Payment Status", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text(" Payment Status", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     }
-                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9)), shape = RoundedCornerShape(16.dp)) {
+                    Card(modifier = Modifier.padding(top = 12.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)), shape = RoundedCornerShape(16.dp)) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Surface(color = when(task.paymentStatus) {
@@ -502,7 +521,7 @@ fun TaskDetailScreen(
                             
                             if (task.paymentProof != null) {
                                 Spacer(modifier = Modifier.height(12.dp))
-                                Text("Payment Proof:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Gray)
+                                Text("Payment Proof:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 val payProofBytes = remember(task.paymentProof) { ImageUtils.decodeBase64ToByteArray(task.paymentProof) }
                                 AsyncImage(model = payProofBytes, contentDescription = "Payment Proof", modifier = Modifier.fillMaxWidth().height(150.dp).padding(top = 4.dp).clip(RoundedCornerShape(8.dp)), contentScale = ContentScale.Crop)
                             }
@@ -527,20 +546,20 @@ fun TaskDetailScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFF5F5F5))
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
                         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = Color.White) {
+                            Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
                                 Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.Person, null, tint = utmMaroon) }
                             }
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(if (isRequester) "Posted by You" else "Posted by", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                Text(if (isRequester) "Posted by You" else "Posted by", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 NameWithRating(
                                     name = if (isRequester) currentUser?.name ?: "You" else task.requesterName.ifBlank { "User" },
                                     rating = taskViewModel.getUserRating(task.requesterId),
                                     fontSize = 15.sp,
-                                    color = Color.Black,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                     fontWeight = FontWeight.ExtraBold
                                 )
                             }
@@ -549,21 +568,21 @@ fun TaskDetailScreen(
 
                     if (isRequester && task.status == TaskStatus.OPEN) {
                         Spacer(modifier = Modifier.height(40.dp))
-                        Text("Interested Runners (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text("Interested Runners (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                         if (interestedRunners.isEmpty()) {
-                            Text("Waiting for applications...", color = Color.Gray, modifier = Modifier.padding(vertical = 16.dp))
+                            Text("Waiting for applications...", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp))
                         } else {
                             interestedRunners.forEach { runner ->
                                 Card(
                                     modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
                                     shape = RoundedCornerShape(16.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                                 ) {
                                     Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                            Surface(modifier = Modifier.size(36.dp), shape = CircleShape, color = Color(0xFFF5F5F5)) {
-                                                Box(contentAlignment = Alignment.Center) { Text(runner.name.take(1), fontWeight = FontWeight.Bold) }
+                                            Surface(modifier = Modifier.size(36.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surfaceVariant) {
+                                                Box(contentAlignment = Alignment.Center) { Text(runner.name.take(1), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                                             }
                                             Spacer(modifier = Modifier.width(12.dp))
                                             NameWithRating(
@@ -589,14 +608,14 @@ fun TaskDetailScreen(
                             }
                         }
                     } else if (isRequester && task.status == TaskStatus.WAITING_VERIFICATION) {
-                        Card(modifier = Modifier.padding(top = 40.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF9C4)), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFFFFD54F))) {
+                        Card(modifier = Modifier.padding(top = 40.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSystemInDarkTheme()) Color(0xFF332F1D) else Color(0xFFFFF9C4)), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFFFFD54F))) {
                             Column(modifier = Modifier.padding(20.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Default.Verified, null, tint = Color(0xFFF57F17))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Verification Required", fontWeight = FontWeight.Bold, color = Color(0xFFF57F17))
                                 }
-                                Text("The runner has finished. Please verify payment/service received.", modifier = Modifier.padding(top = 8.dp), fontSize = 13.sp)
+                                Text("The runner has finished. Please verify payment/service received.", modifier = Modifier.padding(top = 8.dp), fontSize = 13.sp, color = if (isSystemInDarkTheme()) Color.White else Color.Black)
                                 Button(onClick = { showConfirmCompleteDialog = true }, modifier = Modifier.fillMaxWidth().padding(top = 16.dp), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)), shape = RoundedCornerShape(12.dp)) {
                                     Text("Confirm Completion")
                                 }
@@ -604,19 +623,19 @@ fun TaskDetailScreen(
                         }
                     } else if (task.runnerId != null) {
                          Spacer(modifier = Modifier.height(40.dp))
-                         Text("Assigned Runner", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                         Text("Assigned Runner", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                          Card(
                              modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
                              shape = RoundedCornerShape(16.dp),
-                             colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD))
+                             colors = CardDefaults.cardColors(containerColor = if (isSystemInDarkTheme()) Color(0xFF1A2A3A) else Color(0xFFE3F2FD))
                          ) {
                              Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                 Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = Color.White) {
+                                 Surface(modifier = Modifier.size(44.dp), shape = CircleShape, color = MaterialTheme.colorScheme.surface) {
                                      Box(contentAlignment = Alignment.Center) { Icon(Icons.Default.AccountCircle, null, tint = Color(0xFF1976D2)) }
                                  }
                                  Spacer(modifier = Modifier.width(16.dp))
                                  Column {
-                                     Text("Completed by", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+                                     Text("Completed by", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                      NameWithRating(
                                          name = task.runnerName ?: "Runner",
                                          rating = taskViewModel.getUserRating(task.runnerId),
@@ -755,6 +774,48 @@ fun TaskDetailScreen(
                 }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F))) { Text("Submit Report") }
             },
             dismissButton = { TextButton(onClick = { showReportDialog = false }) { Text("Cancel") } }
+        )
+    }
+
+    if (showMapDialog && task.latitude != null && task.longitude != null) {
+        AlertDialog(
+            onDismissRequest = { showMapDialog = false },
+            title = { Text("Task Location", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(modifier = Modifier.fillMaxWidth().height(300.dp).clip(RoundedCornerShape(12.dp))) {
+                        com.google.maps.android.compose.GoogleMap(
+                            cameraPositionState = com.google.maps.android.compose.rememberCameraPositionState {
+                                position = com.google.android.gms.maps.model.CameraPosition.fromLatLngZoom(
+                                    com.google.android.gms.maps.model.LatLng(task.latitude!!, task.longitude!!), 15f
+                                )
+                            }
+                        ) {
+                            com.google.maps.android.compose.Marker(
+                                state = com.google.maps.android.compose.MarkerState(
+                                    position = com.google.android.gms.maps.model.LatLng(task.latitude!!, task.longitude!!)
+                                ),
+                                title = task.title
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            val uri = android.net.Uri.parse("geo:${task.latitude},${task.longitude}?q=${task.latitude},${task.longitude}(${task.title})")
+                            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, uri)
+                            context.startActivity(intent)
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Navigation, null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Open in External Maps")
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showMapDialog = false }) { Text("Close") } }
         )
     }
 }
