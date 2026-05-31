@@ -48,6 +48,9 @@ fun LoginScreen(
     val context = LocalContext.current
     // Local state to capture and present immediate validation issues (Task #157)
     var localValidationError by remember { mutableStateOf<String?>(null) }
+    
+    val isLoading by userViewModel.isLoading.collectAsState()
+    val error by userViewModel.error.collectAsState()
 
     // UTM Maroon and a darker variant for gradient
     val utmMaroon = Color(0xFF800000)
@@ -192,18 +195,15 @@ fun LoginScreen(
                             val emailTrimmed = emailPrefix.trim()
                             val passwordTrimmed = password.trim()
 
-                            // 1. Client-Side Login Validation Enforcement Flow (Task #157)
                             if (emailTrimmed.isEmpty()) {
                                 localValidationError = "UTM Email identifier cannot be left blank!"
                             } else if (passwordTrimmed.isEmpty()) {
                                 localValidationError = "Account access password cannot be left blank!"
                             } else {
                                 localValidationError = null
-                                // 2. Trigger async authentication call checking rules from Firestore (Task #158)
-                                userViewModel.login(emailTrimmed, passwordTrimmed, rememberMe) { success, analyzedRole ->
-                                    if (success && analyzedRole != null) {
-                                        // 3. Forward the role enum to control system layout routing rules (Task #159)
-                                        onLoginSuccess(analyzedRole)
+                                userViewModel.login(emailTrimmed, passwordTrimmed, rememberMe) { success, role ->
+                                    if (success && role != null) {
+                                        onLoginSuccess(role)
                                     }
                                 }
                             }
@@ -211,18 +211,16 @@ fun LoginScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(56.dp),
+                        enabled = !isLoading,
                         shape = RoundedCornerShape(16.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                     ) {
-                        if (userViewModel.isLoading.collectAsState().value) {
-                            CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
+                        if (isLoading) {
+                            CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(24.dp))
                         } else {
                             Text("LOGIN", fontWeight = FontWeight.Bold, fontSize = 16.sp, letterSpacing = 2.sp)
                         }
                     }
-
-                    // Read explicit errors received directly from Firebase execution failures
-                    val error by userViewModel.error.collectAsState()
 
                     // Renders local input issues immediately
                     if (localValidationError != null) {
