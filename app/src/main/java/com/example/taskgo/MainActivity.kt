@@ -78,17 +78,26 @@ class MainActivity : ComponentActivity() {
             .whereEqualTo("receiverId", userId)
             .whereEqualTo("isRead", false)
             .addSnapshotListener { snapshot, e ->
-                if (e != null) return@addSnapshotListener
+                if (e != null) {
+                    Log.e("FCM", "Notification listener error", e)
+                    return@addSnapshotListener
+                }
 
                 snapshot?.documentChanges?.forEach { change ->
                     if (change.type == DocumentChange.Type.ADDED) {
-                        val title = change.document.getString("title") ?: "TaskGO Alert"
-                        val message = change.document.getString("message") ?: ""
-                        val taskId = change.document.getString("taskId")
-                        val docId = change.document.id
+                        try {
+                            val title = change.document.getString("title") ?: "TaskGO Alert"
+                            val message = change.document.getString("message") ?: ""
+                            val taskId = change.document.getString("taskId")
+                            val docId = change.document.id
 
-                        showLocalNotification(title, message, taskId)
-                        db.collection("Notifications").document(docId).update("isRead", true)
+                            showLocalNotification(title, message, taskId)
+                            // Mark as read immediately to prevent loop
+                            db.collection("Notifications").document(docId).update("isRead", true)
+                                .addOnFailureListener { Log.e("FCM", "Failed to mark notif as read: $docId") }
+                        } catch (ex: Exception) {
+                            Log.e("FCM", "Error processing notification document", ex)
+                        }
                     }
                 }
             }

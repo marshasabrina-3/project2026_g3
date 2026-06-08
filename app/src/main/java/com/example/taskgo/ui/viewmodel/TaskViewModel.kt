@@ -93,20 +93,59 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun fetchTasks() {
-        firestore.collection("Tasks").orderBy("timestamp", Query.Direction.DESCENDING).addSnapshotListener { snapshot, _ ->
-            if (snapshot != null) _tasks.value = snapshot.documents.mapNotNull { it.toObject<Task>() }
+        firestore.collection("Tasks").orderBy("timestamp", Query.Direction.DESCENDING).addSnapshotListener { snapshot, e ->
+            if (e != null) {
+                Log.e("TaskViewModel", "Tasks listener error", e)
+                return@addSnapshotListener
+            }
+            if (snapshot != null) {
+                _tasks.value = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        doc.toObject<Task>()
+                    } catch (ex: Exception) {
+                        Log.e("TaskViewModel", "Failed to map Task: ${doc.id}", ex)
+                        null
+                    }
+                }
+            }
         }
     }
 
     private fun fetchReports() {
-        firestore.collection("Reports").addSnapshotListener { snapshot, _ ->
-            if (snapshot != null) _reports.value = snapshot.documents.mapNotNull { it.toObject<Report>() }
+        firestore.collection("Reports").addSnapshotListener { snapshot, e ->
+            if (e != null) {
+                Log.e("TaskViewModel", "Reports listener error", e)
+                return@addSnapshotListener
+            }
+            if (snapshot != null) {
+                _reports.value = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        doc.toObject<Report>()
+                    } catch (ex: Exception) {
+                        Log.e("TaskViewModel", "Failed to map Report: ${doc.id}", ex)
+                        null
+                    }
+                }
+            }
         }
     }
 
     private fun fetchReviews() {
-        firestore.collection("Reviews").addSnapshotListener { snapshot, _ ->
-            if (snapshot != null) _reviews.value = snapshot.documents.mapNotNull { it.toObject<Review>() }
+        firestore.collection("Reviews").addSnapshotListener { snapshot, e ->
+            if (e != null) {
+                Log.e("TaskViewModel", "Reviews listener error", e)
+                return@addSnapshotListener
+            }
+            if (snapshot != null) {
+                _reviews.value = snapshot.documents.mapNotNull { doc ->
+                    try {
+                        doc.toObject<Review>()
+                    } catch (ex: Exception) {
+                        Log.e("TaskViewModel", "Failed to map Review: ${doc.id}", ex)
+                        null
+                    }
+                }
+            }
         }
     }
 

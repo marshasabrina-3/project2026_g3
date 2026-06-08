@@ -55,9 +55,20 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         messageListener = firestore.collection("Conversations").document(convId)
             .collection("Messages")
             .orderBy("timestamp")
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) {
+                    Log.e("ChatViewModel", "Messages listener error", e)
+                    return@addSnapshotListener
+                }
                 if (snapshot != null) {
-                    _messages.value = snapshot.documents.mapNotNull { it.toObject(ChatMessage::class.java) }
+                    _messages.value = snapshot.documents.mapNotNull { doc ->
+                        try {
+                            doc.toObject(com.example.taskgo.data.model.ChatMessage::class.java)
+                        } catch (ex: Exception) {
+                            Log.e("ChatViewModel", "Failed to map Message: ${doc.id}", ex)
+                            null
+                        }
+                    }
                 }
             }
     }
@@ -66,10 +77,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         inboxListener?.remove()
         inboxListener = firestore.collection("Conversations")
             .whereArrayContains("participants", currentUserId)
-            .addSnapshotListener { snapshot, _ ->
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) {
+                    Log.e("ChatViewModel", "Inbox listener error", e)
+                    return@addSnapshotListener
+                }
                 if (snapshot != null) {
                     val summaries = snapshot.documents.mapNotNull { doc ->
-                        doc.toObject(ChatSummary::class.java)?.copy(convId = doc.id)
+                        try {
+                            doc.toObject(ChatSummary::class.java)?.copy(convId = doc.id)
+                        } catch (ex: Exception) {
+                            Log.e("ChatViewModel", "Failed to map ChatSummary: ${doc.id}", ex)
+                            null
+                        }
                     }.sortedByDescending { it.timestamp }
                     _activeChats.value = summaries
                 }
