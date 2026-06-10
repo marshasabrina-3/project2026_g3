@@ -1,28 +1,31 @@
-# TaskGO UTM 🚀 (Version 2.0-a)
+# TaskGO UTM 🚀 (Version 2.1)
 
 TaskGO is a modern, student-centric marketplace application designed for the UTM community. It connects students who need assistance with those offering specialized services, fostering a helpful and efficient campus ecosystem.
 
 ## 🌟 Key Features
 
-### 🗺️ Intelligent Real-Time Navigation (New)
+### 🗺️ Intelligent Real-Time Navigation
 - **Map Selector**: Requesters can pin exact locations on a built-in map for precise task coordination.
 - **GPS Integration**: Runners can navigate to task locations using external GPS apps (Google Maps, Apple Maps) directly from the task details.
 - **Campus-Aware Centering**: The map automatically centers based on the selected campus (UTMKL/UTMJB).
 
-### 💰 Mock Wallet System (New)
+### 💰 Mock Wallet System
 - **In-App Earnings**: Runners now accumulate balance in a mock wallet upon successful task completion.
 - **Transparent Balance**: Users can track their total earnings directly from their profile dashboard.
 
-### 🤖 Advanced Agentic AI "Magic" (New)
+### 🤖 Advanced Agentic AI "Magic"
 - **Magic Suggestion V2**: Intelligent form auto-fill that understands campus shorthand (JB/KL) and intent keywords (Food/Help).
 - **Magic Completion Prompt**: Silent agent that monitors chat for completion intent and prompts the requester for verification.
 - **Dispute Arbitrator**: AI-powered summaries of chat history for disputed tasks to assist Administrators.
 
-### 🌓 Dynamic Appearance (New)
+### 🌓 Dynamic Appearance
 - **Light/Dark Mode**: Full support for system-wide and manual theme switching.
 - **UTM Branding**: Custom color schemes optimized for readability in both modes.
 
-### 🛡️ Unified Admin Console (New)
+### 🛡️ Unified Admin Console (Enhanced in v2.1)
+- **Evidence Investigation (TG-US24)**: View runner completion proofs and requester payment receipts alongside reported issues for full context.
+- **Report Lifecycle Management (TG-US25)**: Interactive status updates for incident reports (Pending, Resolved, Action Taken).
+- **Bad Review Monitoring (TG-US26)**: Dedicated dashboard to oversee and investigate low-quality service reviews (2-stars or below).
 - **Embedded Console**: Admins can now use the app as a student while maintaining access to a dedicated "Console" tab.
 - **Advanced Moderation**: Custom suspension logic (Days/Hours/Minutes) with real-time countdowns for restricted users.
 - **Global Search & Filter**: Search and sort tasks, reports, and users with high-efficiency admin filters.

@@ -6,6 +6,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -127,6 +128,12 @@ fun AdminHomeScreen(
                         label = { Text("Reports") }
                     )
                     NavigationBarItem(
+                        selected = selectedTab == 3,
+                        onClick = { selectedTab = 3 },
+                        icon = { Icon(Icons.Default.Star, contentDescription = "Reviews") },
+                        label = { Text("Reviews") }
+                    )
+                    NavigationBarItem(
                         selected = selectedTab == 2,
                         onClick = { selectedTab = 2 },
                         icon = { Icon(Icons.Default.Person, contentDescription = "Users") },
@@ -151,6 +158,9 @@ fun AdminHomeScreen(
                     }
                     2 -> {
                         AdminUserManagementScreen(userViewModel = userViewModel)
+                    }
+                    3 -> {
+                        AdminBadReviewsList(taskViewModel = taskViewModel, userViewModel = userViewModel)
                     }
                 }
             }
@@ -722,12 +732,95 @@ fun AdminReportsList(taskViewModel: TaskViewModel, userViewModel: UserViewModel)
                                 color = MaterialTheme.colorScheme.secondaryContainer,
                                 shape = RoundedCornerShape(4.dp)
                             ) {
-                                Text(
-                                    text = "Status: ${report.status?.toString()?.uppercase(Locale.ROOT) ?: "PENDING"}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                )
+                                var showStatusMenu by remember { mutableStateOf(false) }
+                                Box {
+                                    Text(
+                                        text = "Status: ${report.status.toString().replace("_", " ")}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier
+                                            .clickable { showStatusMenu = true }
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                    DropdownMenu(expanded = showStatusMenu, onDismissRequest = { showStatusMenu = false }) {
+                                        com.example.taskgo.data.model.ReportStatus.entries.forEach { status ->
+                                            DropdownMenuItem(
+                                                text = { Text(status.name.replace("_", " ")) },
+                                                onClick = {
+                                                    taskViewModel.updateReportStatus(report.id, status)
+                                                    showStatusMenu = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AdminBadReviewsList(taskViewModel: TaskViewModel, userViewModel: UserViewModel) {
+    val reviews by taskViewModel.allReviews.collectAsState()
+    val allTasks by taskViewModel.allTasks.collectAsState()
+    val allUsers by userViewModel.allUsers.collectAsState()
+    
+    // Filtering for low ratings (Task #191)
+    val badReviews = remember(reviews) { reviews.filter { it.rating <= 2 }.sortedByDescending { it.timestamp } }
+
+    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+        Text("Bad Review Monitoring", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        if (badReviews.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No low-rated reviews found.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(badReviews) { review ->
+                    val task = allTasks.find { it.id == review.taskId }
+                    val runner = allUsers.find { it.id == review.revieweeId } ?: com.example.taskgo.data.model.User(name = "Unknown Runner")
+                    val requester = allUsers.find { it.id == review.reviewerId } ?: com.example.taskgo.data.model.User(name = "Unknown Requester")
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                        border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.2f))
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text("Rating: ${review.rating}/5", fontWeight = FontWeight.ExtraBold, color = Color.Red)
+                                val date = java.text.SimpleDateFormat("dd/MM/yyyy", java.util.Locale.getDefault()).format(java.util.Date(review.timestamp))
+                                Text(date, fontSize = 11.sp)
+                            }
+                            
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Task: ${task?.title ?: "Deleted Task"}", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                            Text("Comment: \"${review.comment}\"", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(vertical = 4.dp))
+                            
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+                            
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Column {
+                                    Text("Runner: ${runner.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                    Text("Requester: ${requester.name}", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                }
+                                
+                                // TG-US26 sub-task: Allow admin to review related user profile
+                                Button(
+                                    onClick = { /* In a real app, this would navigate to user detail */ },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Text("View Profile", fontSize = 10.sp)
+                                }
                             }
                         }
                     }

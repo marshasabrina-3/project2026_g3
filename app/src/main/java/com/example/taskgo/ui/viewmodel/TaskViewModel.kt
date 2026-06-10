@@ -368,6 +368,17 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         docRef.set(report.copy(id = docRef.id))
     }
 
+    fun updateReportStatus(reportId: String, newStatus: ReportStatus) {
+        viewModelScope.launch {
+            try {
+                firestore.collection("Reports").document(reportId).update("status", newStatus.name).await()
+                Toast.makeText(getApplication(), "Report status updated to ${newStatus.name}", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e("TaskViewModel", "UpdateReportStatus Error", e)
+            }
+        }
+    }
+
     fun deleteTask(taskId: String) {
         viewModelScope.launch {
             try {

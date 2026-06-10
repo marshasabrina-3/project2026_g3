@@ -1,7 +1,7 @@
 package com.example.taskgo.data.model
 
 enum class ReportStatus {
-    PENDING, RESOLVED
+    PENDING, RESOLVED, ACTION_TAKEN
 }
 
 data class Report(
