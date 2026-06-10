@@ -48,7 +48,7 @@ fun LoginScreen(
     val context = LocalContext.current
     // Local state to capture and present immediate validation issues (Task #157)
     var localValidationError by remember { mutableStateOf<String?>(null) }
-    
+
     val isLoading by userViewModel.isLoading.collectAsState()
     val error by userViewModel.error.collectAsState()
 
@@ -69,44 +69,37 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(24.dp)
-                .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // App Logo Section
+            // App Logo Section - Configured to white circular background with zero double text branding
             Surface(
                 modifier = Modifier
-                    .size(120.dp)
-                    .shadow(12.dp, CircleShape),
+                    .size(200.dp)
+                    .shadow(16.dp, CircleShape),
                 shape = CircleShape,
                 color = Color.White
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.utmlogo),
+                    painter = painterResource(id = R.drawable.taskgologo),
                     contentDescription = "UTM Logo",
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(8.dp)
+                        .padding(12.dp),
+                    contentScale = ContentScale.Fit
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "TaskGO",
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 42.sp
-                ),
-                color = Color.White
-            )
-            Text(
                 text = "UTM Student Service Marketplace",
                 style = MaterialTheme.typography.bodyLarge,
                 color = Color.White.copy(alpha = 0.8f)
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(40.dp))
 
             // Login Form
             Card(
