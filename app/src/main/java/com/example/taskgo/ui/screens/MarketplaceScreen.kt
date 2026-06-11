@@ -460,10 +460,15 @@ fun ModernTaskItem(
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
                         Icon(Icons.Default.AccountCircle, contentDescription = null, tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(12.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(text = "By: ", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        
+                        val ownerName = if (task.type == TaskType.REQUEST) task.requesterName else task.runnerName
+                        val ownerId = if (task.type == TaskType.REQUEST) task.requesterId else (task.runnerId ?: "")
+                        val label = if (task.type == TaskType.REQUEST) "By: " else "Provider: "
+                        
+                        Text(text = label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         NameWithRating(
-                            name = task.requesterName.ifBlank { "User" },
-                            rating = taskViewModel.getUserRating(task.requesterId),
+                            name = (ownerName ?: "User").ifBlank { "User" },
+                            rating = taskViewModel.getUserRating(ownerId),
                             fontSize = 10.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontWeight = FontWeight.Medium,

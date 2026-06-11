@@ -554,10 +554,18 @@ fun TaskDetailScreen(
                             }
                             Spacer(modifier = Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(if (isRequester) "Posted by You" else "Posted by", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                val labelText = if (isRequester) {
+                                    if (task.type == TaskType.REQUEST) "Requested by You" else "Service Provided by You"
+                                } else {
+                                    if (task.type == TaskType.REQUEST) "Posted by" else "Provider"
+                                }
+                                Text(labelText, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 NameWithRating(
-                                    name = if (isRequester) currentUser?.name ?: "You" else task.requesterName.ifBlank { "User" },
-                                    rating = taskViewModel.getUserRating(task.requesterId),
+                                    name = if (isRequester) currentUser?.name ?: "You" else {
+                                        if (task.type == TaskType.REQUEST) task.requesterName.ifBlank { "User" }
+                                        else (task.runnerName ?: "User")
+                                    },
+                                    rating = taskViewModel.getUserRating(if (task.type == TaskType.REQUEST) task.requesterId else (task.runnerId ?: "")),
                                     fontSize = 15.sp,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontWeight = FontWeight.ExtraBold
@@ -568,7 +576,8 @@ fun TaskDetailScreen(
 
                     if (isRequester && task.status == TaskStatus.OPEN) {
                         Spacer(modifier = Modifier.height(40.dp))
-                        Text("Interested Runners (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                        val interestedLabel = if (task.type == TaskType.REQUEST) "Interested Runners" else "Interested Students"
+                        Text("$interestedLabel (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                         if (interestedRunners.isEmpty()) {
                             Text("Waiting for applications...", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp))
                         } else {
@@ -600,14 +609,15 @@ fun TaskDetailScreen(
                                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF43A047)),
                                                 shape = RoundedCornerShape(10.dp)
                                             ) {
-                                                Text("Assign", fontSize = 12.sp)
+                                                Text(if (task.type == TaskType.REQUEST) "Assign" else "Accept", fontSize = 12.sp)
                                             }
                                         }
                                     }
                                 }
                             }
                         }
-                    } else if (isRequester && task.status == TaskStatus.WAITING_VERIFICATION) {
+                    }
+else if (isRequester && task.status == TaskStatus.WAITING_VERIFICATION) {
                         Card(modifier = Modifier.padding(top = 40.dp).fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (isSystemInDarkTheme()) Color(0xFF332F1D) else Color(0xFFFFF9C4)), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, Color(0xFFFFD54F))) {
                             Column(modifier = Modifier.padding(20.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {

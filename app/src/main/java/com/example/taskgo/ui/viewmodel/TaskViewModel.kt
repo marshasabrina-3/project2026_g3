@@ -67,6 +67,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
 
         tasks.filter { task ->
             val isLive = task.status == TaskStatus.OPEN
+            val isNotRemoved = task.status != TaskStatus.REMOVED
             val matchesCategory = category == null || task.category == category
             val matchesQuery = task.title.contains(query, ignoreCase = true) || task.description.contains(query, ignoreCase = true)
             val matchesBlock = block == null || task.location.contains("Block $block", ignoreCase = true)
@@ -74,7 +75,7 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             val matchesCampus = campus == null || task.campus == campus
             val matchesType = type == null || task.type == type
             
-            isLive && matchesCategory && matchesQuery && matchesBlock && matchesPrice && matchesCampus && matchesType
+            isLive && isNotRemoved && matchesCategory && matchesQuery && matchesBlock && matchesPrice && matchesCampus && matchesType
         }.let { filtered ->
             when (sort) {
                 SortOption.LATEST -> filtered.sortedByDescending { it.timestamp }
@@ -186,11 +187,14 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
                     id = docRef.id,
                     requesterId = requesterId,
                     requesterName = requesterName,
+                    runnerId = if (type == TaskType.SERVICE) requesterId else null,
+                    runnerName = if (type == TaskType.SERVICE) requesterName else null,
                     title = title,
                     description = description,
                     category = category,
                     type = type,
                     campus = campus,
+                    location = address, // Sync with address for filter compatibility
                     address = address,
                     destinationAddress = destinationAddress,
                     latitude = latitude,
@@ -217,22 +221,33 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun assignRunner(taskId: String, runnerId: String) {
+    fun assignRunner(taskId: String, participantId: String) {
         viewModelScope.launch {
             try {
-                val userDoc = firestore.collection("Users").document(runnerId).get().await()
-                val runnerName = userDoc.getString("name") ?: "Runner"
+                val docRef = firestore.collection("Tasks").document(taskId)
+                val task = docRef.get().await().toObject<Task>() ?: return@launch
+                
+                val userDoc = firestore.collection("Users").document(participantId).get().await()
+                val userName = userDoc.getString("name") ?: "User"
 
-                firestore.collection("Tasks").document(taskId).update(
-                    "runnerId", runnerId,
-                    "runnerName", runnerName,
-                    "status", TaskStatus.ASSIGNED
-                ).await()
+                val updates = mutableMapOf<String, Any>(
+                    "status" to TaskStatus.ASSIGNED
+                )
+                
+                if (task.type == TaskType.REQUEST) {
+                    updates["runnerId"] = participantId
+                    updates["runnerName"] = userName
+                } else {
+                    updates["requesterId"] = participantId
+                    updates["requesterName"] = userName
+                }
 
-                // Notify Runner
-                sendNotificationToUser(runnerId, "Task Assigned!", "You have been picked for a task.")
+                docRef.update(updates).await()
+
+                // Notify Participant
+                sendNotificationToUser(participantId, "Task Assigned!", "You have been matched for a task.")
             } catch (e: Exception) {
-                Log.e("TaskViewModel", "AssignRunner Error", e)
+                Log.e("TaskViewModel", "Assign Error", e)
             }
         }
     }
@@ -390,7 +405,11 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun updateTask(t: Task) { firestore.collection("Tasks").document(t.id).set(t) }
+    fun updateTask(t: Task) { 
+        // Sync location for filter compatibility
+        val updatedTask = t.copy(location = t.address)
+        firestore.collection("Tasks").document(t.id).set(updatedTask) 
+    }
 
     suspend fun getInterestedRunners(ids: List<String>): List<User> {
         if (ids.isEmpty()) return emptyList()

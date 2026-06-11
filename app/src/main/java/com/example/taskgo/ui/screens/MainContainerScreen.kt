@@ -174,10 +174,10 @@ fun MainContainerScreen(
                                 onBack = { selectedTab = 0 }
                             )
                         } else {
-                            ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, modifier = modifier)
+                            ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, modifier = modifier)
                         }
                     }
-                    3 -> ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, modifier = modifier)
+                    3 -> ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, modifier = modifier)
                 }
             }
 

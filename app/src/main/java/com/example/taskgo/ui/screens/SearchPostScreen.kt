@@ -61,6 +61,7 @@ fun SearchPostScreen(
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
     var selectedLocation by remember { mutableStateOf<com.google.android.gms.maps.model.LatLng?>(null) }
     var selectedAddressStr by remember { mutableStateOf<String?>(null) }
+    var mapPickerTarget by remember { mutableStateOf<String?>(null) } // "START" or "DEST"
     val isPosting by taskViewModel.isPosting.collectAsState()
 
     val utmMaroon = MaterialTheme.colorScheme.primary
@@ -91,88 +92,120 @@ fun SearchPostScreen(
                     screenState = "EDIT"
                 }
             )
-        } else if (screenState == "MAP") {
-            MapSelectorScreen(
-                initialLocation = if (selectedLocation != null) selectedLocation!!
-                                 else if (taskToEdit?.latitude != null) com.google.android.gms.maps.model.LatLng(taskToEdit!!.latitude!!, taskToEdit!!.longitude!!)
-                                 else com.google.android.gms.maps.model.LatLng(3.1718, 101.7145),
-                onLocationSelected = { latLng, address ->
-                    selectedLocation = latLng
-                    selectedAddressStr = address
-                    screenState = previousScreenState
-                },
-                onBack = { screenState = previousScreenState }
-            )
-        } else if (screenState == "MAIN") {
-            PostMainScreen(
-                taskViewModel = taskViewModel,
-                user = user,
-                onCreateRequest = { screenState = "CREATE_REQUEST" },
-                onCreateService = { screenState = "CREATE_SERVICE" },
-                onTaskClick = { selectedTaskForDetail = it }
-            )
         } else {
-            BackHandler {
-                screenState = "MAIN"
-                taskToEdit = null
+            // Main content logic to preserve state during map picking
+            if (screenState == "MAIN") {
+                PostMainScreen(
+                    taskViewModel = taskViewModel,
+                    user = user,
+                    onCreateRequest = {
+                        selectedLocation = null
+                        selectedAddressStr = null
+                        screenState = "CREATE_REQUEST"
+                    },
+                    onCreateService = {
+                        selectedLocation = null
+                        selectedAddressStr = null
+                        screenState = "CREATE_SERVICE"
+                    },
+                    onTaskClick = { selectedTaskForDetail = it }
+                )
             }
-            CreateTaskScreen(
-                type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else if (screenState == "CREATE_SERVICE") TaskType.SERVICE else taskToEdit?.type ?: TaskType.REQUEST,
-                taskToEdit = taskToEdit,
-                initialLatLng = selectedLocation,
-                initialAddress = selectedAddressStr,
-                onOpenMap = {
-                    previousScreenState = screenState
-                    screenState = "MAP"
-                },
-                onBack = {
+
+            // CreateTaskScreen remains in composition during MAP state if we are picking a location
+            val isCreationMode = screenState.startsWith("CREATE") || screenState == "EDIT"
+            val wasCreationMode = previousScreenState.startsWith("CREATE") || previousScreenState == "EDIT"
+            
+            if (isCreationMode || (screenState == "MAP" && wasCreationMode)) {
+                BackHandler {
                     screenState = "MAIN"
                     taskToEdit = null
-                    selectedLocation = null
-                    selectedAddressStr = null
-                },
-                onConfirm = { title, desc, cat, campus, addr, dead, amt, images, lat, lng, destAddr, destLat, destLng ->
-                    if (screenState == "EDIT" && taskToEdit != null) {
-                        taskViewModel.updateTask(taskToEdit!!.copy(
-                            title = title,
-                            description = desc,
-                            category = cat,
-                            campus = campus,
-                            address = addr,
-                            destinationAddress = destAddr,
-                            deadline = dead,
-                            paymentAmount = amt ?: 0.0,
-                            latitude = lat,
-                            longitude = lng,
-                            destinationLatitude = destLat,
-                            destinationLongitude = destLng
-                        ))
-                    } else {
-                        taskViewModel.addTask(
-                            title = title,
-                            description = desc,
-                            category = cat,
-                            type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else TaskType.SERVICE,
-                            campus = campus,
-                            address = addr,
-                            destinationAddress = destAddr,
-                            deadline = dead,
-                            paymentAmount = amt ?: 0.0,
-                            requesterId = user?.id ?: "unknown",
-                            requesterName = user?.name ?: "Unknown",
-                            imageUris = images,
-                            latitude = lat,
-                            longitude = lng,
-                            destinationLatitude = destLat,
-                            destinationLongitude = destLng
-                        )
-                    }
-                    screenState = "MAIN"
-                    taskToEdit = null
-                    selectedLocation = null
-                    selectedAddressStr = null
                 }
-            )
+                CreateTaskScreen(
+                    type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST 
+                           else if (screenState == "CREATE_SERVICE") TaskType.SERVICE 
+                           else if (wasCreationMode && previousScreenState == "CREATE_REQUEST") TaskType.REQUEST
+                           else if (wasCreationMode && previousScreenState == "CREATE_SERVICE") TaskType.SERVICE
+                           else taskToEdit?.type ?: TaskType.REQUEST,
+                    taskToEdit = taskToEdit,
+                    initialLatLng = selectedLocation,
+                    initialAddress = selectedAddressStr,
+                    initialPickerTarget = mapPickerTarget,
+                    onOpenMap = { target, currentLoc ->
+                        mapPickerTarget = target
+                        selectedLocation = currentLoc
+                        selectedAddressStr = null
+                        previousScreenState = screenState
+                        screenState = "MAP"
+                    },
+                    onLocationConsumed = {
+                        selectedLocation = null
+                        selectedAddressStr = null
+                        mapPickerTarget = null
+                    },
+                    onBack = {
+                        screenState = "MAIN"
+                        taskToEdit = null
+                        selectedLocation = null
+                        selectedAddressStr = null
+                    },
+                    onConfirm = { title, desc, cat, campus, addr, dead, amt, images, lat, lng, destAddr, destLat, destLng ->
+                        if (screenState == "EDIT" && taskToEdit != null) {
+                            taskViewModel.updateTask(taskToEdit!!.copy(
+                                title = title,
+                                description = desc,
+                                category = cat,
+                                campus = campus,
+                                address = addr,
+                                destinationAddress = destAddr,
+                                deadline = dead,
+                                paymentAmount = amt ?: 0.0,
+                                latitude = lat,
+                                longitude = lng,
+                                destinationLatitude = destLat,
+                                destinationLongitude = destLng
+                            ))
+                        } else {
+                            taskViewModel.addTask(
+                                title = title,
+                                description = desc,
+                                category = cat,
+                                type = if (screenState == "CREATE_REQUEST") TaskType.REQUEST else TaskType.SERVICE,
+                                campus = campus,
+                                address = addr,
+                                destinationAddress = destAddr,
+                                deadline = dead,
+                                paymentAmount = amt ?: 0.0,
+                                requesterId = user?.id ?: "unknown",
+                                requesterName = user?.name ?: "Unknown",
+                                imageUris = images,
+                                latitude = lat,
+                                longitude = lng,
+                                destinationLatitude = destLat,
+                                destinationLongitude = destLng
+                            )
+                        }
+                        screenState = "MAIN"
+                        taskToEdit = null
+                        selectedLocation = null
+                        selectedAddressStr = null
+                    }
+                )
+            }
+
+            if (screenState == "MAP") {
+                MapSelectorScreen(
+                    initialLocation = if (selectedLocation != null) selectedLocation!!
+                                     else if (taskToEdit?.latitude != null) com.google.android.gms.maps.model.LatLng(taskToEdit!!.latitude!!, taskToEdit!!.longitude!!)
+                                     else com.google.android.gms.maps.model.LatLng(3.1718, 101.7145),
+                    onLocationSelected = { latLng, address ->
+                        selectedLocation = latLng
+                        selectedAddressStr = address
+                        screenState = previousScreenState
+                    },
+                    onBack = { screenState = previousScreenState }
+                )
+            }
         }
 
         if (isPosting) {
@@ -359,6 +392,7 @@ fun PostMainScreen(
                     it.type == TaskType.REQUEST &&
                     it.status != TaskStatus.COMPLETED &&
                     it.status != TaskStatus.CANCELLED &&
+                    it.status != TaskStatus.REMOVED &&
                     !it.hiddenByRequester &&
                     !it.cancelledByAdmin
                 }
@@ -387,6 +421,7 @@ fun PostMainScreen(
                     it.type == TaskType.SERVICE &&
                     it.status != TaskStatus.COMPLETED &&
                     it.status != TaskStatus.CANCELLED &&
+                    it.status != TaskStatus.REMOVED &&
                     !it.hiddenByRequester &&
                     !it.cancelledByAdmin
                 }
@@ -418,7 +453,9 @@ fun PostMainScreen(
                 val appliedRequests = allTasks.filter {
                     (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) &&
                     it.type == TaskType.REQUEST &&
+                    it.requesterId != user?.id &&
                     it.status != TaskStatus.CANCELLED &&
+                    it.status != TaskStatus.REMOVED &&
                     !it.hiddenByRunner &&
                     !it.cancelledByAdmin
                 }
@@ -444,18 +481,20 @@ fun PostMainScreen(
             }
             item {
                 val appliedServices = allTasks.filter {
-                    (it.interestedRunnerIds.contains(user?.id) || it.runnerId == user?.id) &&
+                    (it.interestedRunnerIds.contains(user?.id) || it.requesterId == user?.id) &&
                     it.type == TaskType.SERVICE &&
+                    it.runnerId != user?.id &&
                     it.status != TaskStatus.CANCELLED &&
-                    !it.hiddenByRunner &&
+                    it.status != TaskStatus.REMOVED &&
+                    !it.hiddenByRequester &&
                     !it.cancelledByAdmin
                 }
                 ExpandableListSection("Applications (Services)", appliedServices.size, applicationsServiceExpanded, { applicationsServiceExpanded = !applicationsServiceExpanded }) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (appliedServices.isEmpty()) EmptyHistoryItem("No applications sent for services.")
                         else appliedServices.forEach { task ->
-                            val isChosen = task.runnerId == user?.id
-                            val isRejected = task.runnerId != null && task.runnerId != user?.id
+                            val isChosen = task.requesterId == user?.id
+                            val isRejected = task.requesterId != "" && task.requesterId != user?.id
                             val isPending = !isChosen && !isRejected
                             CompactHistoryItem(
                                 task,
@@ -585,7 +624,9 @@ fun CreateTaskScreen(
     taskToEdit: Task? = null,
     initialLatLng: com.google.android.gms.maps.model.LatLng? = null,
     initialAddress: String? = null,
-    onOpenMap: () -> Unit,
+    initialPickerTarget: String? = null,
+    onOpenMap: (String, com.google.android.gms.maps.model.LatLng?) -> Unit,
+    onLocationConsumed: () -> Unit,
     onBack: () -> Unit,
     onConfirm: (String, String, TaskCategory, String, String, String, Double?, List<Uri>, Double?, Double?, String?, Double?, Double?) -> Unit
 ) {
@@ -597,24 +638,23 @@ fun CreateTaskScreen(
     var deadline by remember { mutableStateOf(taskToEdit?.deadline ?: "") }
     var amount by remember { mutableStateOf(taskToEdit?.paymentAmount?.toString() ?: "") }
 
-    var lat by remember { mutableStateOf(taskToEdit?.latitude ?: initialLatLng?.latitude) }
-    var lng by remember { mutableStateOf(taskToEdit?.longitude ?: initialLatLng?.longitude) }
+    var lat by remember { mutableStateOf(taskToEdit?.latitude) }
+    var lng by remember { mutableStateOf(taskToEdit?.longitude) }
     var destLat by remember { mutableStateOf(taskToEdit?.destinationLatitude) }
     var destLng by remember { mutableStateOf(taskToEdit?.destinationLongitude) }
 
-    var mapPickerMode by remember { mutableStateOf("START") } // "START" or "DEST"
-
-    LaunchedEffect(initialLatLng, initialAddress) {
-        if (initialLatLng != null) {
-            if (mapPickerMode == "START") {
+    LaunchedEffect(initialLatLng, initialAddress, initialPickerTarget) {
+        if (initialLatLng != null && initialPickerTarget != null) {
+            if (initialPickerTarget == "START") {
                 lat = initialLatLng.latitude
                 lng = initialLatLng.longitude
                 if (initialAddress != null) address = initialAddress
-            } else {
+            } else if (initialPickerTarget == "DEST") {
                 destLat = initialLatLng.latitude
                 destLng = initialLatLng.longitude
                 if (initialAddress != null) destinationAddress = initialAddress
             }
+            onLocationConsumed()
         }
     }
 
@@ -762,8 +802,7 @@ fun CreateTaskScreen(
                     shape = RoundedCornerShape(12.dp),
                     trailingIcon = {
                         IconButton(onClick = {
-                            mapPickerMode = "START"
-                            onOpenMap()
+                            onOpenMap("START", if (lat != null && lng != null) com.google.android.gms.maps.model.LatLng(lat!!, lng!!) else null)
                         }) {
                             Icon(
                                 Icons.Default.LocationOn,
@@ -795,8 +834,7 @@ fun CreateTaskScreen(
                         shape = RoundedCornerShape(12.dp),
                         trailingIcon = {
                             IconButton(onClick = {
-                                mapPickerMode = "DEST"
-                                onOpenMap()
+                                onOpenMap("DEST", if (destLat != null && destLng != null) com.google.android.gms.maps.model.LatLng(destLat!!, destLng!!) else null)
                             }) {
                                 Icon(
                                     Icons.Default.PinDrop,
@@ -821,53 +859,53 @@ fun CreateTaskScreen(
                 }
             }
 
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                if (hasPrice) {
-                    OutlinedTextField(
-                        value = amount,
-                        onValueChange = { amount = it },
-                        label = { Text("Price (RM)") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        prefix = { Text("RM ", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = MaterialTheme.colorScheme.onSurface,
-                            unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (hasPrice) {
+                        OutlinedTextField(
+                            value = amount,
+                            onValueChange = { amount = it },
+                            label = { Text("Price (RM)") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            prefix = { Text("RM ", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                            )
                         )
-                    )
-                }
-                if (hasDeadline) {
-                    Surface(
-                        modifier = Modifier
-                            .weight(1.5f)
-                            .height(60.dp)
-                            .clickable { showDatePicker = true },
-                        shape = RoundedCornerShape(12.dp),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-                        color = MaterialTheme.colorScheme.surface
-                    ) {
-                        Row(
+                    }
+                    if (hasDeadline) {
+                        Surface(
                             modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .weight(1.5f)
+                                .height(56.dp) // Exactly matched to OutlinedTextField height
+                                .clickable { showDatePicker = true },
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                            color = MaterialTheme.colorScheme.surface
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Deadline", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text(
-                                    text = deadline.ifBlank { "Select Date/Time" },
-                                    fontSize = 14.sp,
-                                    color = if (deadline.isBlank()) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Deadline", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(
+                                        text = deadline.ifBlank { "Select Date/Time" },
+                                        fontSize = 13.sp,
+                                        color = if (deadline.isBlank()) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             }
-                            Icon(Icons.Default.CalendarMonth, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                         }
                     }
                 }
-            }
 
             OutlinedTextField(
                 value = desc,
