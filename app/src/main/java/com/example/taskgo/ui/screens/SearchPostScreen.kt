@@ -849,13 +849,37 @@ fun CreateTaskScreen(
 
             // Toggles for Price and Deadline (Service only)
             if (type == TaskType.SERVICE) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("Include Price?", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                    Switch(checked = hasPrice, onCheckedChange = { hasPrice = it }, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary))
+                    Switch(
+                        checked = hasPrice,
+                        onCheckedChange = { hasPrice = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White, // ⚪ Thumb stays white when active
+                            checkedTrackColor = Color(0xFF800000), // 🔴 Track turns maroon when active
+                            uncheckedTrackColor = Color.LightGray // 🔘 Track stays gray when inactive
+                        )
+                    )
                 }
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text("Include Deadline?", fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurface)
-                    Switch(checked = hasDeadline, onCheckedChange = { hasDeadline = it }, colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary))
+                    Switch(
+                        checked = hasDeadline,
+                        onCheckedChange = { hasDeadline = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = Color.White, // ⚪ Thumb stays white when active
+                            checkedTrackColor = Color(0xFF800000), // 🔴 Track turns maroon when active
+                            uncheckedTrackColor = Color.LightGray // 🔘 Track stays gray when inactive
+                        )
+                    )
                 }
             }
 
