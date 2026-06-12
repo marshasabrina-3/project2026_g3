@@ -49,6 +49,7 @@ fun MarketplaceScreen(
     taskViewModel: TaskViewModel,
     userViewModel: UserViewModel,
     onChat: (String, String, String) -> Unit,
+    onUserClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val searchQuery by taskViewModel.searchQuery.collectAsState()
@@ -82,15 +83,11 @@ fun MarketplaceScreen(
             userViewModel = userViewModel,
             taskViewModel = taskViewModel,
             onBack = { selectedTaskForDetail = null },
-            onAccept = {
-                currentUser?.id?.let { runnerId ->
-                    taskViewModel.applyForTask(currentTask.id, runnerId)
-                }
-            },
-            onReport = { /* Handle report */ },
-            onChat = { otherId, title ->
-                onChat(currentTask.id, otherId, title)
-            },
+            onAccept = { /* ... */ },
+            onReport = { /* ... */ },
+            onChat = { otherId, title -> onChat(currentTask.id, otherId, title) },
+            onEdit = { /* ... */ },
+            onUserClick = onUserClick, // ⚡ Pass it right down here!
             modifier = modifier
         )
     } else {

@@ -86,6 +86,7 @@ fun SearchPostScreen(
                 onChat = { otherId, title ->
                     onChat(currentTask.id, otherId, title)
                 },
+                onUserClick = { }, // ⚡ ADD THIS LINE HERE TO CLEAR THE COMPILER ERROR!
                 onEdit = { task ->
                     taskToEdit = task
                     selectedTaskForDetail = null

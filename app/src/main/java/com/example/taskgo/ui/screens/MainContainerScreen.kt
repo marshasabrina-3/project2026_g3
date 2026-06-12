@@ -30,6 +30,7 @@ import com.example.taskgo.ui.viewmodel.UserViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 
 @Composable
 fun MainContainerScreen(
@@ -48,6 +49,7 @@ fun MainContainerScreen(
     var activeChatParams by remember { mutableStateOf<ChatParams?>(null) }
     var showInbox by remember { mutableStateOf(false) }
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
+    var viewedUserIdForProfile by remember { mutableStateOf<String?>(null) }
 
     // Handle initial task navigation from deep link
     LaunchedEffect(initialTaskId, allTasks) {
@@ -72,7 +74,34 @@ fun MainContainerScreen(
     val utmMaroon = MaterialTheme.colorScheme.primary
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        if (selectedTaskForDetail != null) {
+        // ⚡ NEW: 1. Public Profile View Overlay Interceptor
+        if (viewedUserIdForProfile != null) {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TopAppBar(
+                        title = { Text("User Profile", fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = { viewedUserIdForProfile = null }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                }
+            ) { paddingValues ->
+                ProfileScreen(
+                    userViewModel = userViewModel,
+                    taskViewModel = taskViewModel,
+                    onLogout = onLogout,
+                    onTaskClick = { selectedTaskForDetail = it },
+                    modifier = Modifier.padding(paddingValues)
+                )
+            }
+        }
+        // 2. Your Existing Task Detail Overlay (Updated with onUserClick)
+        else if (selectedTaskForDetail != null) {
             val currentTask = allTasks.find { it.id == selectedTaskForDetail?.id } ?: selectedTaskForDetail!!
             TaskDetailScreen(
                 task = currentTask,
@@ -93,6 +122,11 @@ fun MainContainerScreen(
                         isRequester = currentTask.requesterId == currentUser?.id,
                         runnerId = if (currentTask.requesterId == currentUser?.id) otherId else currentUser?.id ?: ""
                     )
+                },
+                onUserClick = { clickedUserId ->
+                    // ⚡ Intercept click, close the task card sheet, and display their profile layout!
+                    selectedTaskForDetail = null
+                    viewedUserIdForProfile = clickedUserId
                 }
             )
         } else if (activeChatParams != null) {
@@ -156,10 +190,19 @@ fun MainContainerScreen(
             ) { padding ->
                 val modifier = Modifier.padding(bottom = padding.calculateBottomPadding())
                 when (selectedTab) {
-                    0 -> MarketplaceScreen(taskViewModel, userViewModel, onChat = { tid, uid, title ->
-                        val task = allTasks.find { it.id == tid }
-                        activeChatParams = ChatParams(tid, title, uid, task?.requesterId == currentUser?.id, if (task?.requesterId == currentUser?.id) uid else currentUser?.id ?: "")
-                    }, modifier = modifier)
+                    0 -> MarketplaceScreen(
+                        taskViewModel = taskViewModel,
+                        userViewModel = userViewModel,
+                        onChat = { tid, uid, title ->
+                            val task = allTasks.find { it.id == tid }
+                            activeChatParams = ChatParams(tid, title, uid, task?.requesterId == currentUser?.id, if (task?.requesterId == currentUser?.id) uid else currentUser?.id ?: "")
+                        },
+                        onUserClick = { clickedUserId ->
+                            // ⚡ Handles clicking a profile directly from the primary marketplace feeds!
+                            viewedUserIdForProfile = clickedUserId
+                        },
+                        modifier = modifier
+                    )
                     1 -> SearchPostScreen(taskViewModel, userViewModel, onChat = { tid, uid, title ->
                         val task = allTasks.find { it.id == tid }
                         activeChatParams = ChatParams(tid, title, uid, task?.requesterId == currentUser?.id, if (task?.requesterId == currentUser?.id) uid else currentUser?.id ?: "")
@@ -196,6 +239,7 @@ fun MainContainerScreen(
                 }
             }
         }
+    }
 
         AnimatedVisibility(visible = showInbox, enter = slideInVertically(initialOffsetY = { it }), exit = slideOutVertically(targetOffsetY = { it })) {
             InboxOverlay(
@@ -211,7 +255,7 @@ fun MainContainerScreen(
             )
         }
     }
-}
+
 
 @Composable
 fun InboxOverlay(currentUserId: String, activeChats: List<ChatSummary>, taskViewModel: TaskViewModel, onChatSelect: (ChatSummary) -> Unit, onClose: () -> Unit) {

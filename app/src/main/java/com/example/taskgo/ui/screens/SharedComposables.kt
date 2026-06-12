@@ -223,7 +223,8 @@ fun TaskDetailScreen(
     onReport: () -> Unit,
     onChat: (String, String) -> Unit,
     modifier: Modifier = Modifier,
-    onEdit: (Task) -> Unit = {}
+    onEdit: (Task) -> Unit = {},
+    onUserClick: (String) -> Unit
 ) {
     val context = LocalContext.current
     val currentUser by userViewModel.currentUser.collectAsState()
@@ -542,9 +543,23 @@ fun TaskDetailScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // Requester Info Card
+// Requester Info Card
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                // ⚡ Determine whose profile to target based on Task Type
+                                val targetUserId = if (task.type == TaskType.REQUEST) {
+                                    task.requesterId
+                                } else {
+                                    task.runnerId ?: ""
+                                }
+
+                                // ⚡ Fire navigation lambda callback if the ID exists
+                                if (targetUserId.isNotEmpty()) {
+                                    onUserClick(targetUserId)
+                                }
+                            },
                         shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                     ) {
