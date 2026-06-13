@@ -389,28 +389,6 @@
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    if (user != null) {
-                        // Account Status Badge at the Top (Transparent color)
-                        Surface(
-                            modifier = Modifier.padding(bottom = 12.dp),
-                            color = when(user.status) {
-                                com.example.taskgo.data.model.UserStatus.ACTIVE -> Color(0xFF4CAF50)
-                                com.example.taskgo.data.model.UserStatus.SUSPENDED -> Color(0xFFFF9800)
-                                com.example.taskgo.data.model.UserStatus.BANNED -> Color(0xFFF44336)
-                            }.copy(alpha = 0.3f), // Transparent alpha
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
-                        ) {
-                            Text(
-                                text = user.status.name,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                color = Color.White,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
-
                     Box(modifier = Modifier.fillMaxWidth()) {
                         if (!isMe && user != null) {
                             IconButton(
@@ -442,12 +420,34 @@
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = if (user?.role == UserRole.ADMIN) "Administrator" else "UTM Student",
-                        color = Color.White.copy(alpha = 0.9f),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = if (user?.role == UserRole.ADMIN) "Administrator" else "UTM Student",
+                            color = Color.White.copy(alpha = 0.9f),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        if (user != null) {
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Surface(
+                                color = when(user.status) {
+                                    com.example.taskgo.data.model.UserStatus.ACTIVE -> Color(0xFF4CAF50)
+                                    com.example.taskgo.data.model.UserStatus.SUSPENDED -> Color(0xFFFF9800)
+                                    com.example.taskgo.data.model.UserStatus.BANNED -> Color(0xFFF44336)
+                                }.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(4.dp),
+                                border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.5f))
+                            ) {
+                                Text(
+                                    text = user.status.name,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    color = Color.White,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    }
 
                     Row(modifier = Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Surface(color = Color.White.copy(alpha = 0.2f), shape = CircleShape) {

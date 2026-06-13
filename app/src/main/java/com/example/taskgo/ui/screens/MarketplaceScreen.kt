@@ -113,7 +113,7 @@ fun MarketplaceScreen(
                             Text("Explore Tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
                             Text("Find or provide services", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
                         }
-                        Box(modifier = Modifier.size(45.dp).clip(RoundedCornerShape(8.dp))) {
+                        Box(modifier = Modifier.size(45.dp)) {
                             Image(
                                 painter = painterResource(id = R.drawable.applogo), 
                                 contentDescription = "Logo", 
@@ -446,34 +446,38 @@ fun ModernTaskItem(
                 Column(modifier = Modifier.weight(1f)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = task.category.name.replace("_", " "), fontSize = 9.sp, color = utmMaroon, fontWeight = FontWeight.Bold)
+                        
+                        Surface(
+                            color = utmMaroon.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = formattedPrice, 
+                                fontSize = 14.sp, 
+                                color = utmMaroon, 
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
                     }
 
-                    Row(
-                        modifier = Modifier.fillMaxWidth(), 
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = task.title, 
-                            fontSize = 15.sp, 
-                            fontWeight = FontWeight.Bold, 
-                            maxLines = 1, 
-                            overflow = TextOverflow.Ellipsis, 
-                            modifier = Modifier.weight(1f),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = formattedPrice, 
-                            fontSize = 14.sp, 
-                            color = utmMaroon, 
-                            fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(start = 12.dp)
-                        )
-                    }
+                    Text(
+                        text = task.title, 
+                        fontSize = 15.sp, 
+                        fontWeight = FontWeight.Bold, 
+                        maxLines = 1, 
+                        overflow = TextOverflow.Ellipsis, 
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.LocationOn, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(10.dp))
                         Text(text = " ${task.campus}", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        
+                        Spacer(modifier = Modifier.weight(1f))
+                        
+                        Text(text = "Posted on: $postDate", fontSize = 8.sp, color = MaterialTheme.colorScheme.outline)
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
@@ -493,17 +497,12 @@ fun ModernTaskItem(
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.weight(1f)
                         )
+                        
+                        if (task.deadline.isNotBlank()) {
+                            Text(text = "Deadline: ", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(text = task.deadline, fontSize = 9.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
+                        }
                     }
-                }
-
-                // Deadline and Post Date Segment
-                Column(horizontalAlignment = Alignment.End, modifier = Modifier.padding(start = 8.dp)) {
-                    if (task.deadline.isNotBlank()) {
-                        Text(text = "Deadline:", fontSize = 8.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(text = task.deadline, fontSize = 9.sp, color = Color(0xFFFF9800), fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "Posted on: $postDate", fontSize = 8.sp, color = MaterialTheme.colorScheme.outline)
                 }
             }
         }

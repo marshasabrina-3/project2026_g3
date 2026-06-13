@@ -73,20 +73,20 @@ fun LoginScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // App Logo Section - Configured to white circular background with zero double text branding
+            // App Logo Section
             Surface(
                 modifier = Modifier
-                    .size(200.dp),
+                    .size(200.dp)
+                    .shadow(12.dp, CircleShape),
                 shape = CircleShape,
-                color = Color.Transparent
+                color = Color.White
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.taskgologo),
                     contentDescription = "UTM Logo",
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(12.dp)
-                        .clip(CircleShape),
+                        .padding(20.dp),
                     contentScale = ContentScale.Fit
                 )
             }
@@ -94,9 +94,10 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             Text(
-                text = "UTM Student Service Marketplace",
-                style = MaterialTheme.typography.bodyLarge,
-                color = Color.White.copy(alpha = 0.8f)
+                text = "A Campus Task & Runner App For UTM",
+                style = MaterialTheme.typography.titleMedium,
+                color = Color.White.copy(alpha = 0.9f),
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(40.dp))
