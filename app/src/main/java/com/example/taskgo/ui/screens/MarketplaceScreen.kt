@@ -113,7 +113,7 @@ fun MarketplaceScreen(
                             Text("Explore Tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
                             Text("Find or provide services", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
                         }
-                        Box(modifier = Modifier.size(45.dp)) {
+                        Box(modifier = Modifier.size(45.dp).clip(RoundedCornerShape(8.dp))) {
                             Image(
                                 painter = painterResource(id = R.drawable.applogo), 
                                 contentDescription = "Logo", 
@@ -459,7 +459,7 @@ fun ModernTaskItem(
                             fontWeight = FontWeight.Bold, 
                             maxLines = 1, 
                             overflow = TextOverflow.Ellipsis, 
-                            modifier = Modifier.weight(1f, fill = false), 
+                            modifier = Modifier.weight(1f),
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(

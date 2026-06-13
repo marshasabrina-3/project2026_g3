@@ -389,35 +389,35 @@
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        if (user != null) {
-                            // Account Status Badge at the Top (Transparent color)
-                            Surface(
-                                modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
-                                color = when(user.status) {
-                                    com.example.taskgo.data.model.UserStatus.ACTIVE -> Color(0xFF4CAF50)
-                                    com.example.taskgo.data.model.UserStatus.SUSPENDED -> Color(0xFFFF9800)
-                                    com.example.taskgo.data.model.UserStatus.BANNED -> Color(0xFFF44336)
-                                }.copy(alpha = 0.3f), // Transparent alpha
-                                shape = RoundedCornerShape(8.dp),
-                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
-                            ) {
-                                Text(
-                                    text = user.status.name,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                    color = Color.White,
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.ExtraBold
-                                )
-                            }
+                    if (user != null) {
+                        // Account Status Badge at the Top (Transparent color)
+                        Surface(
+                            modifier = Modifier.padding(bottom = 12.dp),
+                            color = when(user.status) {
+                                com.example.taskgo.data.model.UserStatus.ACTIVE -> Color(0xFF4CAF50)
+                                com.example.taskgo.data.model.UserStatus.SUSPENDED -> Color(0xFFFF9800)
+                                com.example.taskgo.data.model.UserStatus.BANNED -> Color(0xFFF44336)
+                            }.copy(alpha = 0.3f), // Transparent alpha
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
+                        ) {
+                            Text(
+                                text = user.status.name,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                    }
 
-                            if (!isMe) {
-                                IconButton(
-                                    onClick = onReportUser,
-                                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.2f), CircleShape)
-                                ) {
-                                    Icon(Icons.Default.Report, contentDescription = "Report User", tint = Color.White)
-                                }
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (!isMe && user != null) {
+                            IconButton(
+                                onClick = onReportUser,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(end = 16.dp).background(Color.Black.copy(alpha = 0.2f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Report, contentDescription = "Report User", tint = Color.White)
                             }
                         }
 

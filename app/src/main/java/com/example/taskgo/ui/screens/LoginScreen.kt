@@ -76,17 +76,17 @@ fun LoginScreen(
             // App Logo Section - Configured to white circular background with zero double text branding
             Surface(
                 modifier = Modifier
-                    .size(200.dp)
-                    .shadow(16.dp, CircleShape),
+                    .size(200.dp),
                 shape = CircleShape,
-                color = Color.White
+                color = Color.Transparent
             ) {
                 Image(
                     painter = painterResource(id = R.drawable.taskgologo),
                     contentDescription = "UTM Logo",
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(12.dp),
+                        .padding(12.dp)
+                        .clip(CircleShape),
                     contentScale = ContentScale.Fit
                 )
             }
