@@ -77,39 +77,8 @@ fun MainContainerScreen(
     val utmMaroon = MaterialTheme.colorScheme.primary
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // ⚡ NEW: 1. Public Profile View Overlay Interceptor
-        if (viewedUserIdForProfile != null) {
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                topBar = {
-                    @OptIn(ExperimentalMaterial3Api::class)
-                    TopAppBar(
-                        title = { Text("User Profile", fontWeight = FontWeight.Bold) },
-                        navigationIcon = {
-                            IconButton(onClick = { viewedUserIdForProfile = null }) {
-                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-                    )
-                }
-            ) { paddingValues ->
-                ProfileScreen(
-                    userViewModel = userViewModel,
-                    taskViewModel = taskViewModel,
-                    onLogout = onLogout,
-                    onTaskClick = { 
-                        selectedTaskForDetail = it
-                        viewedUserIdForProfile = null 
-                    },
-                    onUserClick = { viewedUserIdForProfile = it },
-                    modifier = Modifier.padding(paddingValues),
-                    viewedUserId = viewedUserIdForProfile
-                )
-            }
-        }
-        // 2. Your Existing Task Detail Overlay (Updated with onUserClick)
-        else if (selectedTaskForDetail != null) {
+        // 3. Your Existing Task Detail Overlay (Top-most priority)
+        if (selectedTaskForDetail != null) {
             val currentTask = allTasks.find { it.id == selectedTaskForDetail?.id } ?: selectedTaskForDetail!!
             TaskDetailScreen(
                 task = currentTask,
@@ -132,12 +101,46 @@ fun MainContainerScreen(
                     )
                 },
                 onUserClick = { clickedUserId ->
-                    // ⚡ Intercept click, close the task card sheet, and display their profile layout!
+                    // Navigate to profile from task detail
+                    // We keep selectedTaskForDetail non-null but the UI priority will show Profile if we change logic
+                    // Actually let's just clear task detail and show profile.
                     selectedTaskForDetail = null
                     viewedUserIdForProfile = clickedUserId
                 }
             )
-        } else if (activeChatParams != null) {
+        }
+        // 1. Public Profile View Overlay Interceptor (Second priority)
+        else if (viewedUserIdForProfile != null) {
+            Scaffold(
+                containerColor = MaterialTheme.colorScheme.background,
+                topBar = {
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    TopAppBar(
+                        title = { Text("User Profile", fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = { viewedUserIdForProfile = null }) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                }
+            ) { paddingValues ->
+                ProfileScreen(
+                    userViewModel = userViewModel,
+                    taskViewModel = taskViewModel,
+                    onLogout = onLogout,
+                    onTaskClick = { clickedTask ->
+                        // View a task from a profile page
+                        selectedTaskForDetail = clickedTask
+                    },
+                    onUserClick = { viewedUserIdForProfile = it },
+                    modifier = Modifier.padding(paddingValues),
+                    viewedUserId = viewedUserIdForProfile
+                )
+            }
+        }
+        else if (activeChatParams != null) {
             ChatScreen(
                 chatViewModel = chatViewModel,
                 userViewModel = userViewModel,

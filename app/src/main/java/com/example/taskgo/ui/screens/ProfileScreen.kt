@@ -136,7 +136,8 @@
                             onNavigateToAdmin = { screenState = "ADMIN_PANEL" },
                             isMe = isMe,
                             onTaskClick = onTaskClick,
-                            onReportUser = { showReportUserDialog = true }
+                            onReportUser = { showReportUserDialog = true },
+                            onWriteReview = { showProfileReviewDialog = true }
                         )
                     }
                     "ADMIN_PANEL" -> {
@@ -196,6 +197,59 @@
         }
 
         // Dialogs
+        var showProfileReviewDialog by remember { mutableStateOf(false) }
+
+        if (showProfileReviewDialog && userToShow != null) {
+            AlertDialog(
+                onDismissRequest = { showProfileReviewDialog = false },
+                title = { Text("Review ${userToShow!!.name}", fontWeight = FontWeight.Bold) },
+                text = {
+                    var rating by remember { mutableIntStateOf(5) }
+                    var comment by remember { mutableStateOf("") }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Row {
+                            repeat(5) { i ->
+                                IconButton(onClick = { rating = i + 1 }) {
+                                    Icon(
+                                        imageVector = if (i < rating) Icons.Default.Star else Icons.Default.StarBorder,
+                                        contentDescription = null,
+                                        tint = if (i < rating) Color(0xFFFFB300) else Color.Gray
+                                    )
+                                }
+                            }
+                        }
+                        OutlinedTextField(
+                            value = comment,
+                            onValueChange = { comment = it },
+                            label = { Text("Share your experience...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 3,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                taskViewModel.addReview(
+                                    Review(
+                                        reviewerId = currentUser?.id ?: "",
+                                        revieweeId = userToShow!!.id,
+                                        rating = rating,
+                                        comment = comment,
+                                        timestamp = System.currentTimeMillis()
+                                    )
+                                )
+                                showProfileReviewDialog = false
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = comment.isNotBlank()
+                        ) { Text("Submit Review") }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { TextButton(onClick = { showProfileReviewDialog = false }) { Text("Cancel") } }
+            )
+        }
+
         if (showReviewDialog && selectedTaskForAction != null) {
             ReviewDialog(
                 task = selectedTaskForAction!!,
@@ -314,7 +368,8 @@
         onNavigateToAdmin: () -> Unit,
         isMe: Boolean,
         onTaskClick: (Task) -> Unit = {},
-        onReportUser: () -> Unit = {}
+        onReportUser: () -> Unit = {},
+        onWriteReview: () -> Unit = {}
     ) {
         val averageRating = remember(user) { user?.id?.let { taskViewModel.getUserRating(it) } ?: 0.0 }
         val reportCount = remember(user) { user?.id?.let { taskViewModel.getUserReportCount(it) } ?: 0 }
@@ -335,31 +390,34 @@
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        if (!isMe && user != null) {
-                            IconButton(
-                                onClick = onReportUser,
-                                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.2f), CircleShape)
-                            ) {
-                                Icon(Icons.Default.Report, contentDescription = "Report User", tint = Color.White)
-                            }
-                            
-                            // Account Status Badge for other users
+                        if (user != null) {
+                            // Account Status Badge at the Top (Transparent color)
                             Surface(
                                 modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
                                 color = when(user.status) {
                                     com.example.taskgo.data.model.UserStatus.ACTIVE -> Color(0xFF4CAF50)
                                     com.example.taskgo.data.model.UserStatus.SUSPENDED -> Color(0xFFFF9800)
                                     com.example.taskgo.data.model.UserStatus.BANNED -> Color(0xFFF44336)
-                                }.copy(alpha = 0.9f),
-                                shape = RoundedCornerShape(8.dp)
+                                }.copy(alpha = 0.3f), // Transparent alpha
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f))
                             ) {
                                 Text(
                                     text = user.status.name,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                                     color = Color.White,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold
                                 )
+                            }
+
+                            if (!isMe) {
+                                IconButton(
+                                    onClick = onReportUser,
+                                    modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.2f), CircleShape)
+                                ) {
+                                    Icon(Icons.Default.Report, contentDescription = "Report User", tint = Color.White)
+                                }
                             }
                         }
 
@@ -419,16 +477,36 @@
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(text = user?.name ?: "User", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
-                        Text(text = user?.email ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Column(
+                        modifier = Modifier.padding(24.dp), 
+                        horizontalAlignment = Alignment.CenterHorizontally // CENTERING CONTENT
+                    ) {
+                        Text(
+                            text = user?.name ?: "User", 
+                            style = MaterialTheme.typography.headlineSmall, 
+                            fontWeight = FontWeight.ExtraBold, 
+                            color = MaterialTheme.colorScheme.onSurface, 
+                            textAlign = TextAlign.Center, // CENTERING TEXT
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = user?.email ?: "", 
+                            style = MaterialTheme.typography.bodyMedium, 
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center, // CENTERING TEXT
+                            modifier = Modifier.fillMaxWidth()
+                        )
                         if (user?.phoneNumber?.isNotBlank() == true) {
-                            Text(text = user.phoneNumber, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = user.phoneNumber, 
+                                style = MaterialTheme.typography.bodyMedium, 
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center, // CENTERING TEXT
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(16.dp))
-
-                        // Wallet System removed - Income moved to history page
                     }
                 }
 
@@ -492,20 +570,70 @@
                 Spacer(modifier = Modifier.height(32.dp))
 
                 // Ratings & Reviews Section
-                Text("Ratings & Reviews", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                Row(
+                    modifier = Modifier.fillMaxWidth(), 
+                    horizontalArrangement = Arrangement.SpaceBetween, 
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Ratings & Reviews", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    if (!isMe) {
+                        TextButton(onClick = onWriteReview) {
+                            Icon(Icons.Default.RateReview, null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Write Review", fontSize = 12.sp)
+                        }
+                    }
+                }
+                
                 Spacer(modifier = Modifier.height(12.dp))
 
-                val reviews = taskViewModel.allReviews.collectAsState().value.filter { it.revieweeId == user?.id }
-                if (reviews.isEmpty()) {
-                    Text("No reviews yet.", modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                val reviewsByModel = taskViewModel.allReviews.collectAsState().value.filter { it.revieweeId == user?.id }
+                
+                // Review Filtering & Sorting States
+                var starFilter by remember { mutableIntStateOf(0) } // 0 = All
+                var sortNewest by remember { mutableStateOf(true) }
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Star Filter
+                    var expandedFilter by remember { mutableStateOf(false) }
+                    Box {
+                        AssistChip(
+                            onClick = { expandedFilter = true },
+                            label = { Text(if (starFilter == 0) "All Stars" else "$starFilter Stars") },
+                            trailingIcon = { Icon(Icons.Default.ArrowDropDown, null) }
+                        )
+                        DropdownMenu(expanded = expandedFilter, onDismissRequest = { expandedFilter = false }) {
+                            DropdownMenuItem(text = { Text("All Stars") }, onClick = { starFilter = 0; expandedFilter = false })
+                            (5 downTo 1).forEach { stars ->
+                                DropdownMenuItem(text = { Text("$stars Stars") }, onClick = { starFilter = stars; expandedFilter = false })
+                            }
+                        }
+                    }
+                    
+                    // Newest/Oldest Toggle
+                    AssistChip(
+                        onClick = { sortNewest = !sortNewest },
+                        label = { Text(if (sortNewest) "Newest First" else "Oldest First") },
+                        leadingIcon = { Icon(if (sortNewest) Icons.Default.Sort else Icons.Default.History, null, modifier = Modifier.size(16.dp)) }
+                    )
+                }
+                
+                val filteredReviews = remember(reviewsByModel, starFilter, sortNewest) {
+                    reviewsByModel
+                        .filter { starFilter == 0 || it.rating == starFilter }
+                        .let { if (sortNewest) it.sortedByDescending { r -> r.timestamp } else it.sortedBy { r -> r.timestamp } }
+                }
+
+                if (filteredReviews.isEmpty()) {
+                    Text("No reviews matching filters.", modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
                 } else {
-                    val displayedReviews = if (isMe) reviews.take(5) else reviews
+                    val displayedReviews = if (isMe) filteredReviews.take(5) else filteredReviews
                     displayedReviews.forEach { review ->
                         ReviewItem(review)
                     }
-                    if (isMe && reviews.size > 5) {
-                        TextButton(onClick = { /* Could navigate to full reviews page if it existed */ }) {
-                            Text("See all ${reviews.size} reviews")
+                    if (isMe && filteredReviews.size > 5) {
+                        TextButton(onClick = { /* Could navigate to full reviews page */ }) {
+                            Text("See all ${filteredReviews.size} reviews")
                         }
                     }
                 }

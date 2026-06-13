@@ -114,7 +114,12 @@ fun MarketplaceScreen(
                             Text("Find or provide services", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
                         }
                         Box(modifier = Modifier.size(45.dp)) {
-                            Image(painter = painterResource(id = R.drawable.applogo), contentDescription = "Logo", modifier = Modifier.fillMaxSize())
+                            Image(
+                                painter = painterResource(id = R.drawable.applogo), 
+                                contentDescription = "Logo", 
+                                modifier = Modifier.fillMaxSize(),
+                                contentScale = ContentScale.Fit
+                            )
                         }
                     }
 
@@ -443,23 +448,26 @@ fun ModernTaskItem(
                         Text(text = task.category.name.replace("_", " "), fontSize = 9.sp, color = utmMaroon, fontWeight = FontWeight.Bold)
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(), 
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
                         Text(
                             text = task.title, 
                             fontSize = 15.sp, 
                             fontWeight = FontWeight.Bold, 
                             maxLines = 1, 
                             overflow = TextOverflow.Ellipsis, 
-                            modifier = Modifier.weight(1f), 
+                            modifier = Modifier.weight(1f, fill = false), 
                             color = MaterialTheme.colorScheme.onSurface
                         )
-                        Spacer(modifier = Modifier.width(16.dp))
                         Text(
                             text = formattedPrice, 
                             fontSize = 14.sp, 
                             color = utmMaroon, 
                             fontWeight = FontWeight.ExtraBold,
-                            modifier = Modifier.padding(start = 4.dp)
+                            modifier = Modifier.padding(start = 12.dp)
                         )
                     }
 

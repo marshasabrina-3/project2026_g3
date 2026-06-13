@@ -650,7 +650,10 @@ else if (isRequester && task.status == TaskStatus.WAITING_VERIFICATION) {
                          Spacer(modifier = Modifier.height(40.dp))
                          Text("Assigned Runner", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                          Card(
-                             modifier = Modifier.padding(top = 12.dp).fillMaxWidth(),
+                             modifier = Modifier
+                                 .padding(top = 12.dp)
+                                 .fillMaxWidth()
+                                 .clickable { onUserClick(task.runnerId) },
                              shape = RoundedCornerShape(16.dp),
                              colors = CardDefaults.cardColors(containerColor = if (isSystemInDarkTheme()) Color(0xFF1A2A3A) else Color(0xFFE3F2FD))
                          ) {
