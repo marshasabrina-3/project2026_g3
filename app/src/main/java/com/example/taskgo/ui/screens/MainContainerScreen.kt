@@ -50,6 +50,9 @@ fun MainContainerScreen(
     var showInbox by remember { mutableStateOf(false) }
     var selectedTaskForDetail by remember { mutableStateOf<Task?>(null) }
     var viewedUserIdForProfile by remember { mutableStateOf<String?>(null) }
+    
+    // Persist admin console tab state when navigating into sub-profile views
+    var adminConsoleTab by remember { mutableIntStateOf(0) }
 
     // Handle initial task navigation from deep link
     LaunchedEffect(initialTaskId, allTasks) {
@@ -158,36 +161,38 @@ fun MainContainerScreen(
                     val isConsoleSelected = isAdmin && selectedTab == 2
 
                     if (!isConsoleSelected) {
-                        Surface(tonalElevation = 12.dp, shadowElevation = 12.dp, color = MaterialTheme.colorScheme.surface) {
-                            NavigationBar(containerColor = MaterialTheme.colorScheme.surface, modifier = Modifier.height(72.dp)) {
-                                val tabs = mutableListOf(
-                                    Triple(0, Icons.Default.Home, "Home"),
-                                    Triple(1, Icons.Default.AddCircle, "Post")
-                                )
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 8.dp,
+                            modifier = Modifier.navigationBarsPadding()
+                        ) {
+                            val tabs = mutableListOf(
+                                Triple(0, Icons.Default.Home, "Home"),
+                                Triple(1, Icons.Default.AddCircle, "Post")
+                            )
 
-                                if (isAdmin) {
-                                    tabs.add(Triple(2, Icons.Default.AdminPanelSettings, "Console"))
-                                    tabs.add(Triple(3, Icons.Default.Person, "Profile"))
-                                } else {
-                                    tabs.add(Triple(2, Icons.Default.Person, "Profile"))
-                                }
+                            if (isAdmin) {
+                                tabs.add(Triple(2, Icons.Default.AdminPanelSettings, "Console"))
+                                tabs.add(Triple(3, Icons.Default.Person, "Profile"))
+                            } else {
+                                tabs.add(Triple(2, Icons.Default.Person, "Profile"))
+                            }
 
-                                tabs.forEach { (index, icon, label) ->
-                                    val selected = selectedTab == index
-                                    NavigationBarItem(
-                                        selected = selected,
-                                        onClick = { selectedTab = index },
-                                        icon = { Icon(icon, label, modifier = Modifier.size(26.dp)) },
-                                        label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 11.sp) },
-                                        colors = NavigationBarItemDefaults.colors(
-                                            selectedIconColor = utmMaroon,
-                                            selectedTextColor = utmMaroon,
-                                            indicatorColor = utmMaroon.copy(alpha = 0.1f),
-                                            unselectedIconColor = MaterialTheme.colorScheme.outline,
-                                            unselectedTextColor = MaterialTheme.colorScheme.outline
-                                        )
+                            tabs.forEach { (index, icon, label) ->
+                                val selected = selectedTab == index
+                                NavigationBarItem(
+                                    selected = selected,
+                                    onClick = { selectedTab = index },
+                                    icon = { Icon(icon, label, modifier = Modifier.size(26.dp)) },
+                                    label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium, fontSize = 12.sp) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = utmMaroon,
+                                        selectedTextColor = utmMaroon,
+                                        indicatorColor = utmMaroon.copy(alpha = 0.1f),
+                                        unselectedIconColor = MaterialTheme.colorScheme.outline,
+                                        unselectedTextColor = MaterialTheme.colorScheme.outline
                                     )
-                                }
+                                )
                             }
                         }
                     }
@@ -220,7 +225,9 @@ fun MainContainerScreen(
                                 onLogout = onLogout,
                                 isEmbedded = true,
                                 onBack = { selectedTab = 0 },
-                                onViewUserProfile = { viewedUserIdForProfile = it }
+                                onViewUserProfile = { viewedUserIdForProfile = it },
+                                initialTab = adminConsoleTab,
+                                onTabChange = { adminConsoleTab = it }
                             )
                         } else {
                             ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, onUserClick = { viewedUserIdForProfile = it }, modifier = modifier)

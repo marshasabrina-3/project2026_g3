@@ -79,8 +79,8 @@ class TaskViewModel(application: Application) : AndroidViewModel(application) {
         }.let { filtered ->
             when (sort) {
                 SortOption.LATEST -> filtered.sortedByDescending { it.timestamp }
-                SortOption.ALPHA_ASC -> filtered.sortedByDescending { it.title } // Swapped to fix reversal
-                SortOption.ALPHA_DESC -> filtered.sortedBy { it.title } // Swapped to fix reversal
+                SortOption.ALPHA_ASC -> filtered.sortedBy { it.title } 
+                SortOption.ALPHA_DESC -> filtered.sortedByDescending { it.title }
                 SortOption.PRICE_LOW_HIGH -> filtered.sortedBy { it.paymentAmount }
                 SortOption.PRICE_HIGH_LOW -> filtered.sortedByDescending { it.paymentAmount }
             }

@@ -78,6 +78,7 @@
         var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
         var showEditImageDialog by remember { mutableStateOf(false) }
         var showThemeDialog by remember { mutableStateOf(false) }
+        var showReportUserDialog by remember { mutableStateOf(false) }
 
         // Fetch user records if we are viewing someone else and don't have them
         LaunchedEffect(viewedUserId) {
@@ -107,7 +108,17 @@
         Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             if (userToShow == null && !isMe) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator()
+                    if (isLoading) {
+                        CircularProgressIndicator()
+                    } else {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.PersonOff, null, modifier = Modifier.size(64.dp), tint = Color.Gray)
+                            Text("User not found or fetch failed.", color = Color.Gray)
+                            Button(onClick = { userViewModel.fetchAllUserRecords() }) {
+                                Text("Retry")
+                            }
+                        }
+                    }
                 }
             } else {
                 when (screenState) {
@@ -125,23 +136,7 @@
                             onNavigateToAdmin = { screenState = "ADMIN_PANEL" },
                             isMe = isMe,
                             onTaskClick = onTaskClick,
-                            onReportUser = {
-                                taskViewModel.addReport(
-                                    Report(
-                                        reporterId = currentUser?.id ?: "",
-                                        reportedUserId = userToShow?.id,
-                                        reason = "Profile Report",
-                                        description = "User reported from profile page."
-                                    )
-                                )
-                                // Increment report count in Firestore
-                                userToShow?.id?.let { uid ->
-                                    val currentCount = userToShow.reportCount
-                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
-                                        .collection("Users").document(uid)
-                                        .update("reportCount", currentCount + 1)
-                                }
-                            }
+                            onReportUser = { showReportUserDialog = true }
                         )
                     }
                     "ADMIN_PANEL" -> {
@@ -238,6 +233,28 @@
             )
         }
 
+        if (showReportUserDialog && userToShow != null) {
+            ReportUserDialog(
+                user = userToShow!!,
+                onDismiss = { showReportUserDialog = false },
+                onConfirm = { category, details ->
+                    taskViewModel.addReport(
+                        Report(
+                            reporterId = currentUser?.id ?: "",
+                            reportedUserId = userToShow!!.id,
+                            reason = "User Report: $category",
+                            description = "[$category]: \"$details\""
+                        )
+                    )
+                    // Increment report count
+                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                        .collection("Users").document(userToShow!!.id)
+                        .update("reportCount", userToShow!!.reportCount + 1)
+                    showReportUserDialog = false
+                }
+            )
+        }
+
         if (showEnlargedImage) {
             EnlargedImageDialog(
                 user = userToShow,
@@ -323,7 +340,26 @@
                                 onClick = onReportUser,
                                 modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.2f), CircleShape)
                             ) {
-                                Icon(Icons.Default.Report, contentDescription = "Report Profile", tint = Color.White)
+                                Icon(Icons.Default.Report, contentDescription = "Report User", tint = Color.White)
+                            }
+                            
+                            // Account Status Badge for other users
+                            Surface(
+                                modifier = Modifier.align(Alignment.TopStart).padding(16.dp),
+                                color = when(user.status) {
+                                    com.example.taskgo.data.model.UserStatus.ACTIVE -> Color(0xFF4CAF50)
+                                    com.example.taskgo.data.model.UserStatus.SUSPENDED -> Color(0xFFFF9800)
+                                    com.example.taskgo.data.model.UserStatus.BANNED -> Color(0xFFF44336)
+                                }.copy(alpha = 0.9f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(
+                                    text = user.status.name,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    color = Color.White,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black
+                                )
                             }
                         }
 
@@ -424,7 +460,14 @@
                         Text(postedLabel, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         Spacer(modifier = Modifier.height(12.dp))
                         postedTasks.take(3).forEach { task ->
-                            PostedTaskHistoryItem(task = task, review = null, onClick = { onTaskClick(task) }, onReview = {}, onReport = {})
+                            PostedTaskHistoryItem(
+                                task = task, 
+                                review = null, 
+                                onClick = { onTaskClick(task) }, 
+                                onReview = {}, 
+                                onReport = {},
+                                hideActions = true // Always hide on public profile summary
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                         if (postedTasks.size > 3) {
@@ -567,16 +610,16 @@
                     LazyColumn(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         items(tasks) { task ->
                             val existingReview = reviews?.find { it.taskId == task.id && it.reviewerId != task.runnerId }
+                            val isPostedHistory = title.contains("Posted", ignoreCase = true)
 
-                            if (onReviewRunner != null) {
-                                val isPublicProfile = !title.contains("My", ignoreCase = true)
+                            if (isPostedHistory) {
                                 PostedTaskHistoryItem(
                                     task = task,
                                     review = existingReview,
                                     onClick = { onTaskClick(task) },
-                                    onReview = { onReviewRunner(task) },
+                                    onReview = { onReviewRunner?.invoke(task) },
                                     onReport = { onReportRunner?.invoke(task) },
-                                    hideActions = isPublicProfile
+                                    hideActions = (onReviewRunner == null)
                                 )
                             } else {
                                 val runnerReview = reviews?.find { it.taskId == task.id && it.revieweeId == task.runnerId }
@@ -744,6 +787,52 @@
                 }
             },
             confirmButton = { Button(onClick = { onConfirm(rating, comment) }) { Text("Submit") } },
+            dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        )
+    }
+
+    @OptIn(ExperimentalLayoutApi::class)
+    @Composable
+    fun ReportUserDialog(user: com.example.taskgo.data.model.User, onDismiss: () -> Unit, onConfirm: (String, String) -> Unit) {
+        var selectedCategory by remember { mutableStateOf("Scam") }
+        var details by remember { mutableStateOf("") }
+        val categories = listOf("Scam", "Bullying", "Fraud", "Unprofessional", "Others")
+
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Report User: ${user.name}", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Select a reason for this user report:", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        categories.forEach { cat ->
+                            FilterChip(
+                                selected = selectedCategory == cat,
+                                onClick = { selectedCategory = cat },
+                                label = { Text(cat, fontSize = 10.sp) }
+                            )
+                        }
+                    }
+                    OutlinedTextField(
+                        value = details,
+                        onValueChange = { details = it },
+                        label = { Text("Provide details...") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onConfirm(selectedCategory, details) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Red),
+                    enabled = details.isNotBlank()
+                ) { Text("Submit User Report") }
+            },
             dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
         )
     }

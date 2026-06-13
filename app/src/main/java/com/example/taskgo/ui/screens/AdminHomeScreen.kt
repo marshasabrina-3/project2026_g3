@@ -20,6 +20,7 @@ import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -63,9 +64,11 @@ fun AdminHomeScreen(
     onLogout: () -> Unit,
     isEmbedded: Boolean = false,
     onBack: () -> Unit = {},
-    onViewUserProfile: (String) -> Unit = {}
+    onViewUserProfile: (String) -> Unit = {},
+    initialTab: Int = 0,
+    onTabChange: (Int) -> Unit = {}
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var showActivityReport by remember { mutableStateOf(false) } // TG-US28 state
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
@@ -75,6 +78,10 @@ fun AdminHomeScreen(
 
     val allTasksByModel by taskViewModel.allTasks.collectAsState()
     val allReportsByModel by taskViewModel.allReports.collectAsState()
+
+    LaunchedEffect(Unit) {
+        userViewModel.fetchAllUserRecords()
+    }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -118,25 +125,37 @@ fun AdminHomeScreen(
                 ) {
                     NavigationBarItem(
                         selected = selectedTab == 0,
-                        onClick = { selectedTab = 0 },
+                        onClick = { 
+                            selectedTab = 0
+                            onTabChange(0) 
+                        },
                         icon = { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Tasks") },
                         label = { Text("Tasks") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == 1,
-                        onClick = { selectedTab = 1 },
+                        onClick = { 
+                            selectedTab = 1
+                            onTabChange(1) 
+                        },
                         icon = { Icon(Icons.Default.Report, contentDescription = "Reports") },
                         label = { Text("Reports") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == 3,
-                        onClick = { selectedTab = 3 },
+                        onClick = { 
+                            selectedTab = 3
+                            onTabChange(3) 
+                        },
                         icon = { Icon(Icons.Default.Star, contentDescription = "Reviews") },
                         label = { Text("Reviews") }
                     )
                     NavigationBarItem(
                         selected = selectedTab == 2,
-                        onClick = { selectedTab = 2 },
+                        onClick = { 
+                            selectedTab = 2
+                            onTabChange(2) 
+                        },
                         icon = { Icon(Icons.Default.Person, contentDescription = "Users") },
                         label = { Text("Users") }
                     )
@@ -167,7 +186,7 @@ fun AdminHomeScreen(
                         AdminBadReviewsList(
                             taskViewModel = taskViewModel,
                             userViewModel = userViewModel,
-                            onViewProfile = { user -> onViewUserProfile(user.id) }
+                            onViewProfile = { userId -> onViewUserProfile(userId) }
                         )
                     }
                 }
@@ -775,7 +794,7 @@ fun AdminReportsList(taskViewModel: TaskViewModel, userViewModel: UserViewModel)
 fun AdminBadReviewsList(
     taskViewModel: TaskViewModel,
     userViewModel: UserViewModel,
-    onViewProfile: (com.example.taskgo.data.model.User) -> Unit
+    onViewProfile: (String) -> Unit
 ) {
     val reviews by taskViewModel.allReviews.collectAsState()
     val allTasks by taskViewModel.allTasks.collectAsState()
@@ -825,7 +844,7 @@ fun AdminBadReviewsList(
                                 
                                 // TG-US26 sub-task: Allow admin to review related user profile
                                 Button(
-                                    onClick = { onViewProfile(runner) },
+                                    onClick = { onViewProfile(review.revieweeId) },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),

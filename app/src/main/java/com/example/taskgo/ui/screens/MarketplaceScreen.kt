@@ -113,8 +113,8 @@ fun MarketplaceScreen(
                             Text("Explore Tasks", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = Color.White)
                             Text("Find or provide services", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
                         }
-                        Surface(modifier = Modifier.size(45.dp).shadow(4.dp, CircleShape), shape = CircleShape, color = Color.White) {
-                            Image(painter = painterResource(id = R.drawable.applogo), contentDescription = "Logo", modifier = Modifier.fillMaxSize().padding(6.dp))
+                        Box(modifier = Modifier.size(45.dp)) {
+                            Image(painter = painterResource(id = R.drawable.applogo), contentDescription = "Logo", modifier = Modifier.fillMaxSize())
                         }
                     }
 
@@ -443,10 +443,24 @@ fun ModernTaskItem(
                         Text(text = task.category.name.replace("_", " "), fontSize = 9.sp, color = utmMaroon, fontWeight = FontWeight.Bold)
                     }
 
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = task.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
-                        Spacer(modifier = Modifier.width(16.dp)) // Increased spacing
-                        Text(text = formattedPrice, fontSize = 14.sp, color = utmMaroon, fontWeight = FontWeight.ExtraBold)
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = task.title, 
+                            fontSize = 15.sp, 
+                            fontWeight = FontWeight.Bold, 
+                            maxLines = 1, 
+                            overflow = TextOverflow.Ellipsis, 
+                            modifier = Modifier.weight(1f), 
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = formattedPrice, 
+                            fontSize = 14.sp, 
+                            color = utmMaroon, 
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier.padding(start = 4.dp)
+                        )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
