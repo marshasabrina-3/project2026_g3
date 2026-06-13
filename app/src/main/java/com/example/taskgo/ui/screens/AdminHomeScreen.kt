@@ -62,7 +62,8 @@ fun AdminHomeScreen(
     userViewModel: UserViewModel,
     onLogout: () -> Unit,
     isEmbedded: Boolean = false,
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    onViewUserProfile: (String) -> Unit = {}
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var showCreateDialog by remember { mutableStateOf(false) }
@@ -157,10 +158,17 @@ fun AdminHomeScreen(
                         AdminReportsList(taskViewModel = taskViewModel, userViewModel = userViewModel)
                     }
                     2 -> {
-                        AdminUserManagementScreen(userViewModel = userViewModel)
+                        AdminUserManagementScreen(
+                            userViewModel = userViewModel,
+                            onViewProfile = onViewUserProfile
+                        )
                     }
                     3 -> {
-                        AdminBadReviewsList(taskViewModel = taskViewModel, userViewModel = userViewModel)
+                        AdminBadReviewsList(
+                            taskViewModel = taskViewModel,
+                            userViewModel = userViewModel,
+                            onViewProfile = { user -> onViewUserProfile(user.id) }
+                        )
                     }
                 }
             }
@@ -764,7 +772,11 @@ fun AdminReportsList(taskViewModel: TaskViewModel, userViewModel: UserViewModel)
 }
 
 @Composable
-fun AdminBadReviewsList(taskViewModel: TaskViewModel, userViewModel: UserViewModel) {
+fun AdminBadReviewsList(
+    taskViewModel: TaskViewModel,
+    userViewModel: UserViewModel,
+    onViewProfile: (com.example.taskgo.data.model.User) -> Unit
+) {
     val reviews by taskViewModel.allReviews.collectAsState()
     val allTasks by taskViewModel.allTasks.collectAsState()
     val allUsers by userViewModel.allUsers.collectAsState()
@@ -813,7 +825,7 @@ fun AdminBadReviewsList(taskViewModel: TaskViewModel, userViewModel: UserViewMod
                                 
                                 // TG-US26 sub-task: Allow admin to review related user profile
                                 Button(
-                                    onClick = { /* In a real app, this would navigate to user detail */ },
+                                    onClick = { onViewProfile(runner) },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
@@ -829,6 +841,8 @@ fun AdminBadReviewsList(taskViewModel: TaskViewModel, userViewModel: UserViewMod
         }
     }
 }
+
+
 
 
 // TG-US24: Full implementation for viewing issue reports alongside contextual task data and multi-proof evidence

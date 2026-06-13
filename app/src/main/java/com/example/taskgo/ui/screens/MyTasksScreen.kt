@@ -14,7 +14,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.taskgo.data.model.Task
 import com.example.taskgo.data.model.TaskStatus
+import com.example.taskgo.data.model.TaskType
 import com.example.taskgo.ui.viewmodel.TaskViewModel
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,32 +28,61 @@ fun MyTasksScreen(
     val allTasks by taskViewModel.allTasks.collectAsState()
     val myTasks = allTasks.filter { it.requesterId == "user_123" } // Mocked current user ID
     var taskToEdit by remember { mutableStateOf<Task?>(null) }
+    
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("Requests", "Services")
+
+    val requestTasks = myTasks.filter { it.type == TaskType.REQUEST }
+    val serviceTasks = myTasks.filter { it.type == TaskType.SERVICE }
 
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
         Scaffold(
             containerColor = Color.Black,
             topBar = {
-                TopAppBar(
-                    title = { Text("My Posted Tasks", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
+                Column {
+                    TopAppBar(
+                        title = { Text("My Posted Tasks", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.primary)
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
+                    )
+                    TabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = Color.Black,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                        indicator = { tabPositions ->
+                            TabRowDefaults.SecondaryIndicator(
+                                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black)
-                )
+                    ) {
+                        tabs.forEachIndexed { index, title ->
+                            Tab(
+                                selected = selectedTab == index,
+                                onClick = { selectedTab = index },
+                                text = { Text(title, color = if (selectedTab == index) MaterialTheme.colorScheme.primary else Color.Gray) }
+                            )
+                        }
+                    }
+                }
             }
         ) { padding ->
-            if (myTasks.isEmpty()) {
+            val currentTasks = if (selectedTab == 0) requestTasks else serviceTasks
+            
+            if (currentTasks.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text("You haven't posted any tasks yet.", color = Color.Gray)
+                    Text("No ${tabs[selectedTab].lowercase()} posted yet.", color = Color.Gray)
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(myTasks) { task ->
+                    items(currentTasks) { task ->
                         MyTaskItem(
                             task = task,
                             onEdit = { taskToEdit = task },

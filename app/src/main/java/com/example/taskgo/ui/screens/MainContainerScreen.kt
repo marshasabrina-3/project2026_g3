@@ -95,8 +95,13 @@ fun MainContainerScreen(
                     userViewModel = userViewModel,
                     taskViewModel = taskViewModel,
                     onLogout = onLogout,
-                    onTaskClick = { selectedTaskForDetail = it },
-                    modifier = Modifier.padding(paddingValues)
+                    onTaskClick = { 
+                        selectedTaskForDetail = it
+                        viewedUserIdForProfile = null 
+                    },
+                    onUserClick = { viewedUserIdForProfile = it },
+                    modifier = Modifier.padding(paddingValues),
+                    viewedUserId = viewedUserIdForProfile
                 )
             }
         }
@@ -214,13 +219,14 @@ fun MainContainerScreen(
                                 userViewModel = userViewModel,
                                 onLogout = onLogout,
                                 isEmbedded = true,
-                                onBack = { selectedTab = 0 }
+                                onBack = { selectedTab = 0 },
+                                onViewUserProfile = { viewedUserIdForProfile = it }
                             )
                         } else {
-                            ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, modifier = modifier)
+                            ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, onUserClick = { viewedUserIdForProfile = it }, modifier = modifier)
                         }
                     }
-                    3 -> ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, modifier = modifier)
+                    3 -> ProfileScreen(userViewModel, taskViewModel, onLogout = onLogout, onTaskClick = { selectedTaskForDetail = it }, onUserClick = { viewedUserIdForProfile = it }, modifier = modifier)
                 }
             }
 

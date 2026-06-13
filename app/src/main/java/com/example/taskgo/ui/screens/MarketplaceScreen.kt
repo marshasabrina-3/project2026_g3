@@ -114,7 +114,7 @@ fun MarketplaceScreen(
                             Text("Find or provide services", style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.7f))
                         }
                         Surface(modifier = Modifier.size(45.dp).shadow(4.dp, CircleShape), shape = CircleShape, color = Color.White) {
-                            Image(painter = painterResource(id = R.drawable.utmlogo), contentDescription = "Logo", modifier = Modifier.fillMaxSize().padding(6.dp))
+                            Image(painter = painterResource(id = R.drawable.applogo), contentDescription = "Logo", modifier = Modifier.fillMaxSize().padding(6.dp))
                         }
                     }
 
@@ -445,7 +445,7 @@ fun ModernTaskItem(
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Text(text = task.title, fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurface)
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(16.dp)) // Increased spacing
                         Text(text = formattedPrice, fontSize = 14.sp, color = utmMaroon, fontWeight = FontWeight.ExtraBold)
                     }
 

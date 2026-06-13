@@ -1,8 +1,13 @@
-# TaskGO UTM 🚀 (Version 2.1)
+# TaskGO UTM 🚀 (Version 2.2)
 
 TaskGO is a modern, student-centric marketplace application designed for the UTM community. It connects students who need assistance with those offering specialized services, fostering a helpful and efficient campus ecosystem.
 
 ## 🌟 Key Features
+
+### 👤 Detailed Public Profiles (New in v2.2)
+- **Universal Profile View**: Users and Admins can now view any student's detailed profile by clicking their name or avatar.
+- **Activity Transparency**: Profiles display a user's posted tasks/services, completed work history as a runner, and their full review history from other community members.
+- **Profile Reporting**: Integrated a reporting button directly on profiles to flag problematic users, which automatically increments their "Report Count" for administrative review.
 
 ### 🗺️ Intelligent Real-Time Navigation
 - **Map Selector**: Requesters can pin exact locations on a built-in map for precise task coordination.
@@ -10,34 +15,29 @@ TaskGO is a modern, student-centric marketplace application designed for the UTM
 - **Campus-Aware Centering**: The map automatically centers based on the selected campus (UTMKL/UTMJB).
 
 ### 💰 Mock Wallet System
-- **In-App Earnings**: Runners now accumulate balance in a mock wallet upon successful task completion.
-- **Transparent Balance**: Users can track their total earnings directly from their profile dashboard.
+- **In-App Earnings**: Runners accumulate balance in a mock wallet upon successful task completion.
+- **Transparent Balance**: Users can track their total earnings directly from their history dashboards.
 
 ### 🤖 Advanced Agentic AI "Magic"
 - **Magic Suggestion V2**: Intelligent form auto-fill that understands campus shorthand (JB/KL) and intent keywords (Food/Help).
-- **Magic Completion Prompt**: Silent agent that monitors chat for completion intent and prompts the requester for verification.
+- **Smart Search**: AI-powered search filtering that processes natural language queries to apply category, campus, and task-type filters automatically.
 - **Dispute Arbitrator**: AI-powered summaries of chat history for disputed tasks to assist Administrators.
 
-### 🌓 Dynamic Appearance
-- **Light/Dark Mode**: Full support for system-wide and manual theme switching.
-- **UTM Branding**: Custom color schemes optimized for readability in both modes.
+### 🛡️ Unified Admin Console (Enhanced in v2.2)
+- **Direct User Investigation**: Admins can now jump directly from the User Management list to a student's full public profile to review their entire history.
+- **Evidence Investigation (TG-US24)**: View runner completion proofs and requester payment receipts alongside reported issues.
+- **Bad Review Monitoring (TG-US26)**: Dedicated dashboard to oversee and investigate low-quality service reviews (2-stars or below) with direct profile access.
+- **Embedded Console**: Admins can use the app as a student while maintaining access to a dedicated "Console" tab.
+- **Advanced Moderation**: Custom suspension logic (Days/Hours/Minutes) for restricted users.
 
-### 🛡️ Unified Admin Console (Enhanced in v2.1)
-- **Evidence Investigation (TG-US24)**: View runner completion proofs and requester payment receipts alongside reported issues for full context.
-- **Report Lifecycle Management (TG-US25)**: Interactive status updates for incident reports (Pending, Resolved, Action Taken).
-- **Bad Review Monitoring (TG-US26)**: Dedicated dashboard to oversee and investigate low-quality service reviews (2-stars or below).
-- **Embedded Console**: Admins can now use the app as a student while maintaining access to a dedicated "Console" tab.
-- **Advanced Moderation**: Custom suspension logic (Days/Hours/Minutes) with real-time countdowns for restricted users.
-- **Global Search & Filter**: Search and sort tasks, reports, and users with high-efficiency admin filters.
-
-### 🎨 Creation Studio
-- **Post & Offer**: Post requests or offer services with titles, descriptions, categories, and multiple image attachments.
-- **Auto-Expanding Workspace**: Creation Studio sections now automatically expand if they contain active items.
-- **Task Management**: Edit or cancel tasks with safety confirmations.
+### 🎨 Creation Studio & My Tasks
+- **Segmented History**: "My Posted Tasks" is now divided into **Requests** and **Services** tabs for better organization.
+- **Terminological Accuracy**: The system now correctly distinguishes between "Interested Runners" (for requests) and "Interested Requesters" (for service offers).
+- **Post & Offer**: Post items with titles, descriptions, categories, and multiple image attachments.
 
 ### 🛒 Dynamic Marketplace
-- **Explore Tasks**: A unified feed with enhanced UI clarity and bold typography.
-- **Advanced Filtering**: Filter by category, campus, and type (Request/Service).
+- **Explore Tasks**: A unified feed with enhanced UI clarity, app branding, and improved layout to prevent price/title overlap.
+- **Fixes**: Corrected alphabetical sorting (A-Z/Z-A) and optimized filtering performance.
 
 ### 🔄 Integrated Task Lifecycle
 - **Proof-Based Completion**: Runner uploads proof -> Requester verifies -> Task completes.
@@ -50,7 +50,7 @@ TaskGO is a modern, student-centric marketplace application designed for the UTM
 ## 🛠️ Technical Architecture
 
 - **UI Framework**: Jetpack Compose.
-- **Backend**: Firebase Authentication, Firestore, and Storage (Free Tier).
+- **Backend**: Firebase Authentication, Firestore, and Storage.
 - **Maps**: Google Maps SDK for Android.
 - **AI**: Google Gemini (Flash 1.5) with Heuristic Fallback.
 - **Architecture**: MVVM with StateFlow & Shared ViewModel Store.

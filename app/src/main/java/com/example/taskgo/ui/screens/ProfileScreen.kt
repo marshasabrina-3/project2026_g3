@@ -55,16 +55,22 @@
         taskViewModel: TaskViewModel,
         onLogout: () -> Unit,
         onTaskClick: (Task) -> Unit = {},
-        modifier: Modifier = Modifier
+        onUserClick: (String) -> Unit = {},
+        modifier: Modifier = Modifier,
+        viewedUserId: String? = null
     ) {
         val context = androidx.compose.ui.platform.LocalContext.current
         val themeViewModel: ThemeViewModel = viewModel(
             viewModelStoreOwner = context as androidx.activity.ComponentActivity
         )
-        val user by userViewModel.currentUser.collectAsState()
+        val currentUser by userViewModel.currentUser.collectAsState()
+        val allUsers by userViewModel.allUsers.collectAsState()
         val allTasks by taskViewModel.allTasks.collectAsState()
         val allReviews by taskViewModel.allReviews.collectAsState()
         val isLoading by userViewModel.isLoading.collectAsState()
+
+        val isMe = viewedUserId == null || viewedUserId == currentUser?.id
+        val userToShow = if (isMe) currentUser else allUsers.find { it.id == viewedUserId }
 
         var screenState by remember { mutableStateOf("MAIN") }
         var showEnlargedImage by remember { mutableStateOf(false) }
@@ -72,6 +78,13 @@
         var selectedUri by remember { mutableStateOf<android.net.Uri?>(null) }
         var showEditImageDialog by remember { mutableStateOf(false) }
         var showThemeDialog by remember { mutableStateOf(false) }
+
+        // Fetch user records if we are viewing someone else and don't have them
+        LaunchedEffect(viewedUserId) {
+            if (!isMe && allUsers.isEmpty()) {
+                userViewModel.fetchAllUserRecords()
+            }
+        }
 
         // Reporting & Reviewing state
         var selectedTaskForAction by remember { mutableStateOf<Task?>(null) }
@@ -92,58 +105,88 @@
         }
 
         Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            when (screenState) {
-                "MAIN" -> {
-                    ProfileMainContent(
-                        user = user,
-                        taskViewModel = taskViewModel,
-                        onLogout = onLogout,
-                        onNavigateToPosted = { screenState = "POSTED_HISTORY" },
-                        onNavigateToCompleted = { screenState = "COMPLETED_HISTORY" },
-                        onNavigateToReportIssue = { screenState = "REPORT_ISSUE" },
-                        onEnlargeImage = { showEnlargedImage = true },
-                        onEditProfile = { showEditProfileDialog = true },
-                        onSelectTheme = { showThemeDialog = true },
-                        onNavigateToAdmin = { screenState = "ADMIN_PANEL" }
-                    )
+            if (userToShow == null && !isMe) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
                 }
-                "ADMIN_PANEL" -> {
-                    AdminHomeScreen(
-                        taskViewModel = taskViewModel,
-                        userViewModel = userViewModel,
-                        onLogout = onLogout,
-                        isEmbedded = true,
-                        onBack = { screenState = "MAIN" }
-                    )
-                }
-                "POSTED_HISTORY" -> {
-                    TaskHistoryPage(
-                        title = "My Posted Tasks",
-                        tasks = allTasks.filter { it.requesterId == user?.id },
-                        reviews = allReviews,
-                        onTaskClick = onTaskClick,
-                        onReviewRunner = {
-                            selectedTaskForAction = it
-                            showReviewDialog = true
-                        },
-                        onReportRunner = {
-                            selectedTaskForAction = it
-                            showReportDialog = true
-                        },
-                        onBack = { screenState = "MAIN" }
-                    )
-                }
-                "COMPLETED_HISTORY" -> {
-                    TaskHistoryPage(
-                        title = "Tasks I Completed",
-                        tasks = allTasks.filter { it.runnerId == user?.id && it.status == TaskStatus.COMPLETED },
-                        reviews = allReviews,
-                        onTaskClick = onTaskClick,
-                        onBack = { screenState = "MAIN" }
-                    )
-                }
-                "REPORT_ISSUE" -> {
-                    ReportIssuePage(taskViewModel = taskViewModel, user = user, onBack = { screenState = "MAIN" })
+            } else {
+                when (screenState) {
+                    "MAIN" -> {
+                        ProfileMainContent(
+                            user = userToShow,
+                            taskViewModel = taskViewModel,
+                            onLogout = onLogout,
+                            onNavigateToPosted = { screenState = "POSTED_HISTORY" },
+                            onNavigateToCompleted = { screenState = "COMPLETED_HISTORY" },
+                            onNavigateToReportIssue = { screenState = "REPORT_ISSUE" },
+                            onEnlargeImage = { showEnlargedImage = true },
+                            onEditProfile = { showEditProfileDialog = true },
+                            onSelectTheme = { showThemeDialog = true },
+                            onNavigateToAdmin = { screenState = "ADMIN_PANEL" },
+                            isMe = isMe,
+                            onTaskClick = onTaskClick,
+                            onReportUser = {
+                                taskViewModel.addReport(
+                                    Report(
+                                        reporterId = currentUser?.id ?: "",
+                                        reportedUserId = userToShow?.id,
+                                        reason = "Profile Report",
+                                        description = "User reported from profile page."
+                                    )
+                                )
+                                // Increment report count in Firestore
+                                userToShow?.id?.let { uid ->
+                                    val currentCount = userToShow.reportCount
+                                    com.google.firebase.firestore.FirebaseFirestore.getInstance()
+                                        .collection("Users").document(uid)
+                                        .update("reportCount", currentCount + 1)
+                                }
+                            }
+                        )
+                    }
+                    "ADMIN_PANEL" -> {
+                        AdminHomeScreen(
+                            taskViewModel = taskViewModel,
+                            userViewModel = userViewModel,
+                            onLogout = onLogout,
+                            isEmbedded = true,
+                            onBack = { screenState = "MAIN" },
+                            onViewUserProfile = onUserClick
+                        )
+                    }
+                    "POSTED_HISTORY" -> {
+                        TaskHistoryPage(
+                            title = if (isMe) "My Posted Tasks" else "${userToShow?.name}'s Posted Tasks",
+                            tasks = allTasks.filter { it.requesterId == userToShow?.id },
+                            reviews = allReviews,
+                            onTaskClick = onTaskClick,
+                            onReviewRunner = if (isMe) {
+                                {
+                                    selectedTaskForAction = it
+                                    showReviewDialog = true
+                                }
+                            } else null,
+                            onReportRunner = if (isMe) {
+                                {
+                                    selectedTaskForAction = it
+                                    showReportDialog = true
+                                }
+                            } else null,
+                            onBack = { screenState = "MAIN" }
+                        )
+                    }
+                    "COMPLETED_HISTORY" -> {
+                        TaskHistoryPage(
+                            title = if (isMe) "Tasks I Completed" else "${userToShow?.name}'s Completed Tasks",
+                            tasks = allTasks.filter { it.runnerId == userToShow?.id && it.status == TaskStatus.COMPLETED },
+                            reviews = allReviews,
+                            onTaskClick = onTaskClick,
+                            onBack = { screenState = "MAIN" }
+                        )
+                    }
+                    "REPORT_ISSUE" -> {
+                        ReportIssuePage(taskViewModel = taskViewModel, user = currentUser, onBack = { screenState = "MAIN" })
+                    }
                 }
             }
 
@@ -166,7 +209,7 @@
                     taskViewModel.addReview(
                         Review(
                             taskId = selectedTaskForAction!!.id,
-                            reviewerId = user?.id ?: "",
+                            reviewerId = currentUser?.id ?: "",
                             revieweeId = selectedTaskForAction!!.runnerId ?: "",
                             rating = rating,
                             comment = comment
@@ -184,7 +227,7 @@
                 onConfirm = { reason ->
                     taskViewModel.addReport(
                         Report(
-                            reporterId = user?.id ?: "",
+                            reporterId = currentUser?.id ?: "",
                             reportedUserId = selectedTaskForAction!!.runnerId ?: "",
                             taskId = selectedTaskForAction!!.id,
                             description = reason
@@ -197,21 +240,21 @@
 
         if (showEnlargedImage) {
             EnlargedImageDialog(
-                user = user,
+                user = userToShow,
                 onDismiss = { showEnlargedImage = false },
-                onEdit = {
+                onEdit = if (isMe) { {
                     showEnlargedImage = false
                     photoPickerLauncher.launch("image/*")
-                }
+                } } else null
             )
         }
 
         if (showEditProfileDialog) {
             EditProfilePhoneDialog(
-                currentPhone = user?.phoneNumber ?: "",
+                currentPhone = currentUser?.phoneNumber ?: "",
                 onDismiss = { showEditProfileDialog = false },
                 onSave = { newPhone ->
-                    userViewModel.updateProfile(user?.name ?: "", user?.email ?: "", newPhone)
+                    userViewModel.updateProfile(currentUser?.name ?: "", currentUser?.email ?: "", newPhone)
                     showEditProfileDialog = false
                 }
             )
@@ -251,7 +294,10 @@
         onEnlargeImage: () -> Unit,
         onEditProfile: () -> Unit,
         onSelectTheme: () -> Unit,
-        onNavigateToAdmin: () -> Unit
+        onNavigateToAdmin: () -> Unit,
+        isMe: Boolean,
+        onTaskClick: (Task) -> Unit = {},
+        onReportUser: () -> Unit = {}
     ) {
         val averageRating = remember(user) { user?.id?.let { taskViewModel.getUserRating(it) } ?: 0.0 }
         val reportCount = remember(user) { user?.id?.let { taskViewModel.getUserReportCount(it) } ?: 0 }
@@ -271,22 +317,33 @@
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Surface(
-                        modifier = Modifier.size(100.dp).clickable { onEnlargeImage() }.shadow(8.dp, CircleShape),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surface
-                    ) {
-                        if (!user?.profileImageUrl.isNullOrEmpty()) {
-                            val imageBytes = remember(user!!.profileImageUrl) { ImageUtils.decodeBase64ToByteArray(user.profileImageUrl) }
-                            AsyncImage(
-                                model = imageBytes,
-                                contentDescription = "Profile Picture",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        } else {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(text = user?.name?.take(1) ?: "?", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        if (!isMe && user != null) {
+                            IconButton(
+                                onClick = onReportUser,
+                                modifier = Modifier.align(Alignment.TopEnd).padding(16.dp).background(Color.Black.copy(alpha = 0.2f), CircleShape)
+                            ) {
+                                Icon(Icons.Default.Report, contentDescription = "Report Profile", tint = Color.White)
+                            }
+                        }
+
+                        Surface(
+                            modifier = Modifier.size(100.dp).align(Alignment.Center).clickable { onEnlargeImage() }.shadow(8.dp, CircleShape),
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surface
+                        ) {
+                            if (!user?.profileImageUrl.isNullOrEmpty()) {
+                                val imageBytes = remember(user!!.profileImageUrl) { ImageUtils.decodeBase64ToByteArray(user.profileImageUrl) }
+                                AsyncImage(
+                                    model = imageBytes,
+                                    contentDescription = "Profile Picture",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
+                            } else {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(text = user?.name?.take(1) ?: "?", style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                }
                             }
                         }
                     }
@@ -329,7 +386,9 @@
                     Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(text = user?.name ?: "User", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
                         Text(text = user?.email ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(text = user?.phoneNumber ?: "", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (user?.phoneNumber?.isNotBlank() == true) {
+                            Text(text = user.phoneNumber, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -339,15 +398,53 @@
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Text("Account Settings", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                Spacer(modifier = Modifier.height(12.dp))
+                if (isMe) {
+                    Text("Account Settings", modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Spacer(modifier = Modifier.height(12.dp))
 
-                ProfileMenuButton(text = "Edit Phone Number", icon = Icons.Default.Phone, onClick = onEditProfile)
-                ProfileMenuButton(text = "Appearance (Dark/Light)", icon = Icons.Default.Brightness6, onClick = onSelectTheme)
+                    ProfileMenuButton(text = "Edit Phone Number", icon = Icons.Default.Phone, onClick = onEditProfile)
+                    ProfileMenuButton(text = "Appearance (Dark/Light)", icon = Icons.Default.Brightness6, onClick = onSelectTheme)
+                }
 
-                ProfileMenuButton(text = "My Posted Tasks History", icon = Icons.Default.History, onClick = onNavigateToPosted)
-                ProfileMenuButton(text = "Completed Tasks (Runner)", icon = Icons.Default.CheckCircle, onClick = onNavigateToCompleted)
-                ProfileMenuButton(text = "Report App Issues", icon = Icons.Default.BugReport, onClick = onNavigateToReportIssue)
+                val postedLabel = if (isMe) "My Posted Tasks History" else "${user?.name}'s Posted Tasks"
+                val completedLabel = if (isMe) "Completed Tasks (Runner)" else "${user?.name}'s Completed Work"
+
+                if (isMe) {
+                    ProfileMenuButton(text = postedLabel, icon = Icons.Default.History, onClick = onNavigateToPosted)
+                    ProfileMenuButton(text = completedLabel, icon = Icons.Default.CheckCircle, onClick = onNavigateToCompleted)
+                    ProfileMenuButton(text = "Report App Issues", icon = Icons.Default.BugReport, onClick = onNavigateToReportIssue)
+                } else {
+                    // Show Tasks Inline for public profile
+                    val allTasks = taskViewModel.allTasks.collectAsState().value
+                    val postedTasks = allTasks.filter { it.requesterId == user?.id }
+                    val completedTasks = allTasks.filter { it.runnerId == user?.id && it.status == TaskStatus.COMPLETED }
+
+                    if (postedTasks.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(postedLabel, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        postedTasks.take(3).forEach { task ->
+                            PostedTaskHistoryItem(task = task, review = null, onClick = { onTaskClick(task) }, onReview = {}, onReport = {})
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        if (postedTasks.size > 3) {
+                            TextButton(onClick = onNavigateToPosted) { Text("See all ${postedTasks.size} tasks") }
+                        }
+                    }
+
+                    if (completedTasks.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(completedLabel, modifier = Modifier.fillMaxWidth(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.height(12.dp))
+                        completedTasks.take(3).forEach { task ->
+                            CompletedTaskItem(task = task, review = null, onClick = { onTaskClick(task) })
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        if (completedTasks.size > 3) {
+                            TextButton(onClick = onNavigateToCompleted) { Text("See all ${completedTasks.size} completed tasks") }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
@@ -359,26 +456,34 @@
                 if (reviews.isEmpty()) {
                     Text("No reviews yet.", modifier = Modifier.fillMaxWidth(), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 } else {
-                    reviews.take(5).forEach { review ->
+                    val displayedReviews = if (isMe) reviews.take(5) else reviews
+                    displayedReviews.forEach { review ->
                         ReviewItem(review)
+                    }
+                    if (isMe && reviews.size > 5) {
+                        TextButton(onClick = { /* Could navigate to full reviews page if it existed */ }) {
+                            Text("See all ${reviews.size} reviews")
+                        }
                     }
                 }
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Button(
-                    onClick = onLogout,
-                    modifier = Modifier.fillMaxWidth().height(56.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isSystemInDarkTheme()) Color(0xFF3B1E1E) else Color(0xFFFFF1F1),
-                        contentColor = Color.Red
-                    ),
-                    border = if (!isSystemInDarkTheme()) BorderStroke(1.dp, Color.Red.copy(alpha = 0.2f)) else null
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("Logout", fontWeight = FontWeight.Bold)
+                if (isMe) {
+                    Button(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isSystemInDarkTheme()) Color(0xFF3B1E1E) else Color(0xFFFFF1F1),
+                            contentColor = Color.Red
+                        ),
+                        border = if (!isSystemInDarkTheme()) BorderStroke(1.dp, Color.Red.copy(alpha = 0.2f)) else null
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Logout, contentDescription = null)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Logout", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -464,19 +569,22 @@
                             val existingReview = reviews?.find { it.taskId == task.id && it.reviewerId != task.runnerId }
 
                             if (onReviewRunner != null) {
+                                val isPublicProfile = !title.contains("My", ignoreCase = true)
                                 PostedTaskHistoryItem(
                                     task = task,
                                     review = existingReview,
                                     onClick = { onTaskClick(task) },
                                     onReview = { onReviewRunner(task) },
-                                    onReport = { onReportRunner?.invoke(task) }
+                                    onReport = { onReportRunner?.invoke(task) },
+                                    hideActions = isPublicProfile
                                 )
                             } else {
                                 val runnerReview = reviews?.find { it.taskId == task.id && it.revieweeId == task.runnerId }
                                 CompletedTaskItem(
                                     task = task,
                                     review = runnerReview,
-                                    onClick = { onTaskClick(task) }
+                                    onClick = { onTaskClick(task) },
+                                    showDetails = true
                                 )
                             }
                         }
@@ -493,7 +601,8 @@
         review: Review?,
         onClick: () -> Unit,
         onReview: () -> Unit,
-        onReport: () -> Unit
+        onReport: () -> Unit,
+        hideActions: Boolean = false
     ) {
         val statusColor = when (task.status) {
             TaskStatus.OPEN -> Color(0xFF4CAF50)
@@ -520,7 +629,7 @@
                     Text(text = task.status.name, modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp), color = statusColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                 }
 
-                if (task.status == TaskStatus.COMPLETED && task.runnerId != null) {
+                if (task.status == TaskStatus.COMPLETED && task.runnerId != null && !hideActions) {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                     Text(
@@ -568,7 +677,7 @@
     }
 
     @Composable
-    fun CompletedTaskItem(task: Task, review: Review?, onClick: () -> Unit) {
+    fun CompletedTaskItem(task: Task, review: Review?, onClick: () -> Unit, showDetails: Boolean = false) {
         Card(
             modifier = Modifier.fillMaxWidth().clickable { onClick() },
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -576,9 +685,19 @@
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(task.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(task.title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+                    if (showDetails) {
+                        Text("RM %.2f".format(Locale.getDefault(), task.paymentAmount), color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
                 Spacer(modifier = Modifier.height(4.dp))
-                Text("Completed", color = Color(0xFF43A047), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Completed", color = Color(0xFF43A047), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    if (showDetails) {
+                        Text(" • Posted by ${task.requesterName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
 
                 review?.let {
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -763,7 +882,7 @@
     }
 
     @Composable
-    fun EnlargedImageDialog(user: com.example.taskgo.data.model.User?, onDismiss: () -> Unit, onEdit: () -> Unit) {
+    fun EnlargedImageDialog(user: com.example.taskgo.data.model.User?, onDismiss: () -> Unit, onEdit: (() -> Unit)? = null) {
         Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
             Box(modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.9f)).clickable { onDismiss() }, contentAlignment = Alignment.Center) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -775,8 +894,10 @@
                             Box(contentAlignment = Alignment.Center) { Text(text = user?.name?.take(1) ?: "", fontSize = 120.sp, color = Color(0xFF800000)) }
                         }
                     }
-                    Spacer(modifier = Modifier.height(32.dp))
-                    Button(onClick = onEdit, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)) { Text("Change Picture") }
+                    if (onEdit != null) {
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Button(onClick = onEdit, shape = RoundedCornerShape(12.dp), colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black)) { Text("Change Picture") }
+                    }
                 }
             }
         }

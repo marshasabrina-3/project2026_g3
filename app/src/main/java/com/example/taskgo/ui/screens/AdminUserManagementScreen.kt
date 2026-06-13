@@ -23,7 +23,10 @@ import com.example.taskgo.ui.viewmodel.UserViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AdminUserManagementScreen(userViewModel: UserViewModel) {
+fun AdminUserManagementScreen(
+    userViewModel: UserViewModel,
+    onViewProfile: (String) -> Unit = {}
+) {
     val searchQuery by userViewModel.searchQuery.collectAsState()
     val isLoading by userViewModel.isLoading.collectAsState()
     val allUsers by userViewModel.allUsers.collectAsState()
@@ -250,6 +253,18 @@ fun AdminUserManagementScreen(userViewModel: UserViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800))
                         ) {
                             Text("Confirm Suspension", color = Color.White)
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { 
+                                onViewProfile(user.id)
+                                selectedUserForAction = null
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("View Full Profile")
                         }
                     }
                 }

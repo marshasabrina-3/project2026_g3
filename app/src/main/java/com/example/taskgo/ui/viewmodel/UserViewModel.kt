@@ -63,7 +63,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
                 val document = firestore.collection("Users").document(uid).get().await()
                 if (document.exists()) {
                     val userObject = try {
-                        document.toObject<User>()
+                        document.toObject<User>()?.copy(id = document.id)
                     } catch (e: Exception) {
                         Log.e("AUTH_INIT", "Data mapping error for user $uid", e)
                         null
@@ -99,7 +99,7 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
                     
                     if (document.exists()) {
                         val userObject = try {
-                            document.toObject<User>()
+                            document.toObject<User>()?.copy(id = document.id)
                         } catch (e: Exception) {
                             Log.e("AUTH_ROLE", "Critical: Failed to map Firestore document to User object for UID: ${firebaseUser.uid}", e)
                             null
@@ -208,9 +208,8 @@ class UserViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val snapshot = firestore.collection("Users").get().await()
                 val userList = snapshot.documents.mapNotNull { doc ->
-                    doc.toObject<User>()
-                }.filter { it.role != UserRole.ADMIN } // Keep other admins safe from modifications
-
+                    doc.toObject<User>()?.copy(id = doc.id)
+                }
                 _allUsers.value = userList
             } catch (e: Exception) {
                 _error.value = e.message

@@ -591,7 +591,7 @@ fun TaskDetailScreen(
 
                     if (isRequester && task.status == TaskStatus.OPEN) {
                         Spacer(modifier = Modifier.height(40.dp))
-                        val interestedLabel = if (task.type == TaskType.REQUEST) "Interested Runners" else "Interested Students"
+                        val interestedLabel = if (task.type == TaskType.REQUEST) "Interested Runners" else "Interested Requesters"
                         Text("$interestedLabel (${interestedRunners.size})", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                         if (interestedRunners.isEmpty()) {
                             Text("Waiting for applications...", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 16.dp))
