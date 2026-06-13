@@ -91,6 +91,7 @@
         var selectedTaskForAction by remember { mutableStateOf<Task?>(null) }
         var showReviewDialog by remember { mutableStateOf(false) }
         var showReportDialog by remember { mutableStateOf(false) }
+        var showProfileReviewDialog by remember { mutableStateOf(false) }
 
         val photoPickerLauncher = rememberLauncherForActivityResult(
             contract = ActivityResultContracts.GetContent()
@@ -197,7 +198,6 @@
         }
 
         // Dialogs
-        var showProfileReviewDialog by remember { mutableStateOf(false) }
 
         if (showProfileReviewDialog && userToShow != null) {
             AlertDialog(
